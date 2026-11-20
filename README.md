@@ -6,6 +6,7 @@
   <a href="https://github.com/Lombo-Forge/jellyfin-plugin-lomboshelf/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Lombo-Forge/jellyfin-plugin-lomboshelf?include_prereleases"></a>
   <img alt="Jellyfin 12.x" src="https://img.shields.io/badge/Jellyfin-12.x-blue">
   <img alt="Status: skeleton" src="https://img.shields.io/badge/status-skeleton%2C%20unverified-orange">
+  <a href="https://ko-fi.com/datlombardo"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white"></a>
 </p>
 
 # LomboShelf
