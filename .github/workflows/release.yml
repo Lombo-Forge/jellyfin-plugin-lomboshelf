@@ -1,6 +1,8 @@
 name: Release
-# Push a tag such as v0.1.0 and this publishes a GitHub release with the web files zipped.
-# The plugin zip and manifest.json entry come from the C# build, which does not exist yet (docs/design.md).
+# Push a tag such as v0.1.0. This builds and tests the plugin, makes the plugin zip (the dll, zipped by
+# scripts/package-plugin.sh with an md5 checksum, same result as jprm) and the web-files zip, and attaches both to a
+# GitHub release. The md5 and the manifest entry to paste into the hub repository's manifest.json are printed in the
+# run log, in the run summary and at the end of the release notes. This repository does not edit that manifest.
 on:
   push:
     tags: ["v*"]
@@ -12,8 +14,28 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - run: cd web && zip -r ../lomboshelf-web.zip .
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet test -c Release plugin/Jellyfin.Plugin.LomboShelf.Tests/Jellyfin.Plugin.LomboShelf.Tests.csproj
+      - name: Build the plugin zip
+        run: |
+          sh scripts/package-plugin.sh "${GITHUB_REF_NAME}" dist | tee package.out
+          {
+            echo "Plugin zip: lomboshelf_*.zip"
+            echo
+            echo "Not verified in a real Jellyfin. Paste this into the hub repository's manifest.json:"
+            echo
+            echo '```'
+            sed -n '/^md5:/,$p' package.out
+            echo '```'
+          } > notes-extra.md
+          cp notes-extra.md "$GITHUB_STEP_SUMMARY"
+      - run: cd web && zip -r ../dist/lomboshelf-web.zip .
       - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: lomboshelf-web.zip
+          body_path: notes-extra.md
+          files: |
+            dist/lomboshelf_*.zip
+            dist/lomboshelf-web.zip

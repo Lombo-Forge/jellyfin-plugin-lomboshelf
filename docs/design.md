@@ -15,10 +15,12 @@
 ## Status
 
 The `web/` folder (JavaScript and CSS) is written and tested against a fake jellyfin-web in jsdom. A **C# plugin
-skeleton** is in `plugin/`: it compiles (`dotnet build -c Release`, .NET SDK 10.0, `Jellyfin.Controller` 12.4.0, 0
-warnings, 0 errors) and the web files are embedded in the DLL. That is all that is verified. The plugin has not been
-loaded by a Jellyfin server, the File Transformation hookup is a reflection call written from that plugin's README and
-never run, and there are no C# tests yet. Nothing in this repository has been run in a real Jellyfin.
+skeleton** is in `plugin/`: it compiles (`dotnet build -c Release`, .NET SDK 10.0, `Jellyfin.Controller` 12.4.0), the
+web files are embedded in the DLL, and 72 xUnit tests (`dotnet test`) cover the pure logic: the `index.html` edit, the
+settings JSON, the asset allow-list, settings checks and the defaults. That is all that is verified. The plugin has not
+been loaded by a Jellyfin server, the File Transformation hookup is a reflection call written from that plugin's README
+and never run, and the settings page and the two controllers have never been called by a real server. Nothing in this
+repository has been run in a real Jellyfin.
 
 ## What the plugin does
 
@@ -56,7 +58,10 @@ server's web client, so they ignore all of this.
 ## Settings
 
 Saved by the plugin (an XML configuration like every Jellyfin plugin) and edited in the plugin's settings page (an
-embedded HTML page). They become `window.LomboShelfConfig`:
+embedded HTML page, which reads and saves them through `GET`/`POST /LomboShelf/config`, administrators only; the
+controller checks colours against the same pattern as `loader.js` and the header-menu groups against their shape before
+saving, and answers 400 with the problems). In the page the groups are a JSON text box (`HeaderNavGroupsJson`). They
+become `window.LomboShelfConfig`:
 
 ```json
 {
@@ -101,6 +106,7 @@ Built as a skeleton in `plugin/` (compiles; see Status for what that does and do
 plugin/
   build.yaml                          jprm metadata (guid, version, targetAbi 12.4.0.0, net10.0)
   manifest.json                       plugin repository manifest TEMPLATE (placeholder checksum, URL and timestamp)
+  Jellyfin.Plugin.LomboShelf.Tests/     xUnit project (net10.0); runs against the plugin project and the real web/ folder
   Jellyfin.Plugin.LomboShelf/
     Jellyfin.Plugin.LomboShelf.csproj   net10.0, Jellyfin.Controller 12.4.0, embeds ../../web/*.js and *.css
     Plugin.cs                           BasePlugin<PluginConfiguration>, IHasWebPages, fixed GUID
@@ -108,15 +114,29 @@ plugin/
     Configuration/PluginConfiguration.cs  the settings as properties (defaults equal web/loader.js)
     Configuration/configPage.html       settings form (embedded), ApiClient.getPluginConfiguration / updatePluginConfiguration
     Api/WebAssetsController.cs          GET /LomboShelf/web/{file}: embedded files, allow-list, anonymous
+    Api/ConfigController.cs             GET/POST /LomboShelf/config: settings for the settings page, admin only, checked on save
     Services/IndexTransform.cs          pure: settings -> window.LomboShelfConfig JSON; html -> html with both script tags
+    Services/WebAssets.cs               the allow-list of served files (exact match, so no path can get through)
+    Services/ConfigSanitizer.cs         checks and cleans settings before they are saved
+    Services/HeaderNavGroups.cs         parses and checks the header-menu groups text
     Services/IFileTransformationRegistrar.cs   the seam behind which the File Transformation call lives
     Services/FileTransformationRegistrar.cs    reflection call to File Transformation (UNVERIFIED, see below)
     Services/PatchRequestPayload.cs     { "contents": "..." } handed to the callback
     Services/StartupRegistration.cs     IHostedService: registers on start, logs a warning when it cannot
 ```
 
-Not in the skeleton: `Api/ConfigController.cs`, the xUnit project, `headerNav.groups` in the settings page (the config
-JSON sends an empty list), release packaging.
+The xUnit tests check: the script tags go before `</body>` (any case; appended when there is none) and a second pass
+changes nothing; the settings JSON cannot close the script tag (`<`, `>`, `&` are escaped) and still reads back to the
+original text; bad header-menu groups fall back to an empty list; only the seven listed files are served and
+`..`, slashes, encoded dots, other case, empty and `null` names get a 404 (the controller is called directly); the list
+equals the files in `web/` and the embedded resources; and the default settings produce exactly the defaults written in
+`web/loader.js` (the test reads that file). They do not run Jellyfin, the settings page's JavaScript, authorization on
+the config route (the `RequiresElevation` policy name is taken from Jellyfin, not exercised) or the plugin's XML saving.
+
+Packaging: `scripts/package-plugin.sh <version>` publishes the plugin, zips only `Jellyfin.Plugin.LomboShelf.dll`, and
+prints the zip's md5 and a manifest entry (`lomboshelf_<version>.zip`, the file layout jprm makes). It was run once in
+a container (with a stand-in `zip`, as the .NET image has none) and produced a zip with the dll; the zip was never
+installed anywhere. The release workflow runs it on a tag and attaches the zip. `jprm` itself was not used or tried.
 
 **File Transformation contract, as far as it was confirmed.** From that plugin's README (read once, from its GitHub
 page): a plugin cannot reference it directly (load-context issues), so it finds the assembly whose full name contains
@@ -129,8 +149,8 @@ plugin uses), and which File Transformation versions work with Jellyfin 12.x (it
 one Jellyfin version). If the call fails, the plugin logs a warning and injects nothing.
 
 Steps still to do: (1) install File Transformation and this plugin in a throwaway Jellyfin 12.4, read its source or
-logs, and fix the registration; (2) `IndexTransform` tests (xUnit); (3) build the zip with `jprm` and fill
-`manifest.json`; (4) the release workflow to publish it; (5) test desktop, a phone browser and a TV browser.
+logs, and fix the registration; (2) fill the hub repository's `manifest.json` from a real release (the script prints the
+entry); (3) test the settings page, desktop, a phone browser and a TV browser.
 
 ## What is untested
 
@@ -142,7 +162,7 @@ logs, and fix the registration; (2) `IndexTransform` tests (xUnit); (3) build th
 - The next-season flow and the Jellyfin Enhanced endpoints it calls were taken from the original and not checked against
   that plugin's current version.
 - File Transformation: the registration code in `plugin/` was written from its README and never run; parameter type, callback signature and version support are unconfirmed.
-- The C# plugin has only been compiled. Loading in Jellyfin, the settings page, the asset route, the manifest and installing from a plugin repository were never run. No C# tests exist.
+- The C# plugin has been compiled and its pure logic unit-tested, nothing more. Loading in Jellyfin, the settings page (its JavaScript is not tested at all), the config and asset routes as served by a real server, the manifest and installing from a plugin repository were never run.
 - The wordmark's leaning "F" in the banner did not render as leaning in the PNG (the SVG attribute is ignored by the renderer used).
 
 ## What was cut from the original scripts

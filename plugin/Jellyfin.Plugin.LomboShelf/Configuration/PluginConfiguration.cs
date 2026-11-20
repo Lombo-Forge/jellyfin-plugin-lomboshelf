@@ -38,7 +38,10 @@ public class PluginConfiguration : BasePluginConfiguration
     // nextSeason
     public bool NextSeasonShowArt { get; set; } = true;
 
-    // headerNav (only sent when FeatureHeaderNav is on; groups are not editable yet)
+    // headerNav (only sent when FeatureHeaderNav is on; groups are JSON text, see HeaderNavGroups)
     public string[] HeaderNavOrder { get; set; } = Array.Empty<string>();
     public string[] HeaderNavHide { get; set; } = Array.Empty<string>();
+
+    /// <summary>Groups as JSON, e.g. [{"label":"Anime","items":[["Anime","Shows"]]}]. Checked on save; invalid text sends no groups.</summary>
+    public string HeaderNavGroupsJson { get; set; } = "[]";
 }
