@@ -15,7 +15,7 @@ A streaming-style Home for Jellyfin's web client: a Resume card, Keep watching, 
 chips on the Movies and Shows pages, an optional next-season prompt, and a dark theme whose colours you set.
 
 > **Status: not a working plugin yet.** The JavaScript and CSS in [`web/`](web) are written and tested against a fake
-> web client (jsdom). A C# plugin skeleton in [`plugin/`](plugin) compiles (`dotnet build -c Release`), but it has never
+> web client (jsdom). A C# plugin skeleton in [`plugin/`](plugin) compiles (`dotnet build -c Release`) and its pure logic has 72 unit tests, but it has never
 > been loaded by a Jellyfin server, its File Transformation hookup is unverified, and there is no release or
 > plugin repository yet (see [docs/design.md](docs/design.md)). Nothing here has been run in a real Jellyfin. Until the plugin exists, the
 > only way to try the web files is the manual route below, on a throwaway server.
@@ -70,7 +70,7 @@ The keys are listed in [docs/design.md](docs/design.md#settings). All are option
 
 - Nothing has run in a real Jellyfin. The selectors and API calls come from scripts that ran on a Jellyfin 12.4 web client
   elsewhere; the class names in a real page were not re-checked.
-- The C# plugin in `plugin/` only compiles. The settings page, the asset route, the File Transformation hookup (written from its README, never run) and the manifest template are all untested; there are no C# tests.
+- The C# plugin in `plugin/` compiles and has unit tests for its pure logic (the `index.html` edit, settings JSON, the file allow-list, settings checks, defaults). The settings page and its JavaScript, the config and asset routes in a running server, the File Transformation hookup (written from its README, never run), the release zip and the manifest template are untested.
 - The CSS was ported and read, not viewed in a browser. TV and phone layouts were not re-checked.
 - The next-season prompt depends on Jellyfin Enhanced's Seerr endpoints, not checked against its current version.
 - JavaScript is checked with ESLint and 9 jsdom tests (`npm test`); there is no CSS linter.

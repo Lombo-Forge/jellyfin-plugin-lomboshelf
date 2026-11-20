@@ -34,7 +34,7 @@ public static class IndexTransform
         {
             cfg["headerNav"] = new Dictionary<string, object?>
             {
-                ["order"] = c.HeaderNavOrder, ["groups"] = Array.Empty<object>(), ["hide"] = c.HeaderNavHide
+                ["order"] = c.HeaderNavOrder, ["groups"] = HeaderNavGroups.ParseOrEmpty(c.HeaderNavGroupsJson), ["hide"] = c.HeaderNavHide
             };
         }
 

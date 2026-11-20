@@ -5,7 +5,7 @@
     <title>LomboShelf</title>
 </head>
 <body>
-<div id="LomboShelfConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+<div id="LomboShelfConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-textarea,emby-button,emby-checkbox">
     <div data-role="content">
         <div class="content-primary">
             <h2>LomboShelf</h2>
@@ -17,6 +17,9 @@
                 <div class="inputContainer"><label class="inputLabel" for="Surface">Surface</label><input is="emby-input" type="text" id="Surface"></div>
                 <div class="inputContainer"><label class="inputLabel" for="Text">Text</label><input is="emby-input" type="text" id="Text"></div>
                 <div class="inputContainer"><label class="inputLabel" for="Muted">Muted text</label><input is="emby-input" type="text" id="Muted"></div>
+                <div class="inputContainer"><label class="inputLabel" for="Surface2">Surface 2</label><input is="emby-input" type="text" id="Surface2"></div>
+                <div class="inputContainer"><label class="inputLabel" for="AccentHover">Accent (hover)</label><input is="emby-input" type="text" id="AccentHover"></div>
+                <div class="inputContainer"><label class="inputLabel" for="Radius">Corner radius (for example 6px)</label><input is="emby-input" type="text" id="Radius"></div>
                 <h3>Features</h3>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureTheme"><span>Theme</span></label>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureHomeShelf"><span>Home shelf</span></label>
@@ -34,14 +37,15 @@
                 <div class="inputContainer"><label class="inputLabel" for="BrowseMergeLibraries">Libraries to merge when browsing (comma separated)</label><input is="emby-input" type="text" id="BrowseMergeLibraries"></div>
                 <div class="inputContainer"><label class="inputLabel" for="HeaderNavOrder">Header menu order (comma separated)</label><input is="emby-input" type="text" id="HeaderNavOrder"></div>
                 <div class="inputContainer"><label class="inputLabel" for="HeaderNavHide">Header menu hidden (comma separated)</label><input is="emby-input" type="text" id="HeaderNavHide"></div>
+                <div class="inputContainer"><label class="inputLabel" for="HeaderNavGroupsJson">Header menu groups (JSON)</label><textarea is="emby-textarea" id="HeaderNavGroupsJson" rows="4" class="emby-textarea"></textarea><div class="fieldDescription">For example: [{"label": "Anime", "items": [["Anime", "Shows"], ["Anime Movies", "Movies"]]}]. Each item is a library name and its type (Movies or Shows). Leave as [] for none.</div></div>
                 <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
             </form>
         </div>
     </div>
     <script type="text/javascript">
         (function () {
-            var pluginId = "6f1c2a54-3b7d-4e0a-9c85-2d41a7e0b913";
-            var texts = ["Accent", "Bg", "Surface", "Text", "Muted"];
+            var texts = ["Accent", "AccentHover", "Bg", "Surface", "Surface2", "Text", "Muted", "Radius", "HeaderNavGroupsJson"];
+            var url = function () { return ApiClient.getUrl("LomboShelf/config"); };
             var bools = ["FeatureTheme", "FeatureHomeShelf", "FeatureBrowse", "FeatureNextSeason", "FeatureHeaderNav",
                 "ShelfResume", "ShelfKeepWatching", "ShelfNewThisWeek", "ShelfGenres", "NextSeasonShowArt"];
             var lists = ["BrowseMergeLibraries", "HeaderNavOrder", "HeaderNavHide"];
@@ -51,24 +55,30 @@
 
             page.addEventListener("pageshow", function () {
                 Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                ApiClient.ajax({ type: "GET", url: url(), dataType: "json" }).then(function (c) {
                     texts.forEach(function (k) { el(k).value = c[k] || ""; });
                     bools.forEach(function (k) { el(k).checked = !!c[k]; });
                     lists.forEach(function (k) { el(k).value = (c[k] || []).join(", "); });
                     el("ShelfGenreLimit").value = c.ShelfGenreLimit || 0;
                     Dashboard.hideLoadingMsg();
-                });
+                }, function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Could not load the LomboShelf settings."); });
             });
             el("LomboShelfForm").addEventListener("submit", function (e) {
                 e.preventDefault();
                 Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                ApiClient.ajax({ type: "GET", url: url(), dataType: "json" }).then(function (c) {
                     texts.forEach(function (k) { c[k] = el(k).value; });
                     bools.forEach(function (k) { c[k] = el(k).checked; });
                     lists.forEach(function (k) { c[k] = split(el(k).value); });
                     c.ShelfGenreLimit = parseInt(el("ShelfGenreLimit").value, 10) || 0;
-                    ApiClient.updatePluginConfiguration(pluginId, c).then(Dashboard.processPluginConfigurationUpdateResult);
-                });
+                    ApiClient.ajax({ type: "POST", url: url(), data: JSON.stringify(c), contentType: "application/json", dataType: "json" }).then(
+                        function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Saved. Reload the web client to see the changes."); },
+                        function (r) {
+                            Dashboard.hideLoadingMsg();
+                            var show = function (b) { Dashboard.alert((b && b.errors ? b.errors : ["Could not save the settings."]).join("\n")); };
+                            if (r && r.json) { r.json().then(show, function () { show(null); }); } else { show(null); }
+                        });
+                }, function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Could not load the LomboShelf settings."); });
                 return false;
             });
         })();

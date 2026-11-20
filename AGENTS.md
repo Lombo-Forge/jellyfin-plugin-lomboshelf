@@ -15,7 +15,7 @@ Notes for an AI coding agent (or a person) working in this repo. `CLAUDE.md` pul
 
 LomboShelf is a Jellyfin web plugin: a streaming-style Home shelf, genre browsing, an optional next-season prompt and a
 theme for jellyfin-web, installed from a plugin repository and injected through the File Transformation plugin.
-`web/` (JavaScript and CSS) is tested in jsdom. `plugin/` is a C# skeleton that **compiles** and nothing more: never loaded by Jellyfin, File Transformation call unverified (`docs/design.md`).
+`web/` (JavaScript and CSS) is tested in jsdom. `plugin/` is a C# skeleton that **compiles** and has xUnit tests for its pure logic; it was never loaded by Jellyfin, and the File Transformation call and settings page are unverified (`docs/design.md`).
 
 ## Layout
 
@@ -25,7 +25,8 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 | `web/ui.js` | Shared helpers (`window.__lomboShelfUI`). |
 | `web/home-shelf.js`, `browse-genres.js`, `next-season.js`, `header-nav.js` | The features. |
 | `web/lomboshelf.css` | Theme and layout; colours are `--lshelf-*` variables. |
-| `plugin/` | C# plugin skeleton (`Jellyfin.Plugin.LomboShelf/`, `build.yaml`, `manifest.json` template). Embeds `web/`. |
+| `plugin/` | C# plugin skeleton (`Jellyfin.Plugin.LomboShelf/`, its xUnit project `Jellyfin.Plugin.LomboShelf.Tests/`, `build.yaml`, `manifest.json` template). Embeds `web/`. |
+| `scripts/package-plugin.sh` | Builds the plugin zip, prints its md5 and the manifest entry (the release workflow runs it). |
 | `tests/web.test.mjs` | jsdom tests with a fake `ApiClient` and `fetch` (`npm test`). |
 | `docs/design.md` | How files are injected, settings, versions, the C# plan, what is untested. |
 | `scripts/leak-check.sh` | Fails when private or personal strings appear. CI runs it. |
@@ -35,7 +36,7 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 - **Fail open.** Any error removes our block and Jellyfin's own page comes back. Never leave Jellyfin's rows hidden after a failure.
 - **Escape everything** that goes into the page (`ui.esc`). Titles are untrusted. Never build CSS or JavaScript from a setting without a strict check (see the theme pattern in `loader.js`).
 - **No outside calls** except the Jellyfin server (the signed-in user's `ApiClient`). The one documented exception is TMDb's backdrop image in the next-season dialog, which a setting turns off.
-- **A new setting** goes in `loader.js` defaults, `docs/design.md` (Settings) and a test. Keep classes prefixed `lshelf-` and colours as variables.
+- **A new setting** goes in `loader.js` defaults, `docs/design.md` (Settings), `PluginConfiguration`/`IndexTransform` (a C# test compares the defaults with `loader.js`) and a test. Keep classes prefixed `lshelf-` and colours as variables.
 - **Do not claim it works in a real Jellyfin** until it has been run in one (a throwaway server, never someone's real one). Say what is untested.
 - **Never put private details in the repo:** real hostnames, IPs, keys, local paths. `scripts/leak-check.sh` enforces it.
 - Plain language in docs. Say "streaming-style", never the name of a streaming service. Never imply the Jellyfin project made it.
@@ -50,6 +51,7 @@ npm test           # node --test with jsdom
 sh scripts/leak-check.sh
 # C# skeleton (needs the .NET 10 SDK; in Docker build a copy so obj/ and bin/ stay out of the repo)
 dotnet build -c Release plugin/Jellyfin.Plugin.LomboShelf/Jellyfin.Plugin.LomboShelf.csproj
+dotnet test -c Release plugin/Jellyfin.Plugin.LomboShelf.Tests/Jellyfin.Plugin.LomboShelf.Tests.csproj
 pre-commit run --all-files   # file hygiene and the leak check
 ```
 
