@@ -1,0 +1,180 @@
+/*
+ * LomboShelf: a dark, streaming-style look for jellyfin-web (and the apps that embed it), plus the styles for the
+ * Home shelf (home-shelf.js), genre browsing (browse-genres.js), the header menu (header-nav.js) and the
+ * next-season dialog (next-season.js).
+ *
+ * Colours are CSS variables. loader.js sets them from the plugin settings; the values below are the defaults.
+ * Everything under "Theme" is skipped when the plugin setting "Theme" is off (class lshelf-no-theme on <html>).
+ * Class names checked against jellyfin-web 12.x only by reading; see docs/design.md ("What is untested").
+ */
+:root {
+  --lshelf-bg: #141414;
+  --lshelf-surface: #1f1f1f;
+  --lshelf-surface-2: #2a2a2a;
+  --lshelf-text: #e5e5e5;
+  --lshelf-muted: #a3a3a3;
+  --lshelf-accent: #e50914;
+  --lshelf-accent-hover: #f6121d;
+  --lshelf-radius: 6px;
+  --lshelf-line: #3a3a3a;
+  --lshelf-w: clamp(118px, 10.5vw, 190px);
+  --lshelf-ww: clamp(220px, 19vw, 330px);
+  --lshelf-gutter: 3.5vw;
+}
+
+/* ============================================================ Theme */
+html:not(.lshelf-no-theme), html:not(.lshelf-no-theme) body, html:not(.lshelf-no-theme) .backgroundContainer,
+html:not(.lshelf-no-theme) .mainAnimatedPage, html:not(.lshelf-no-theme) .dialog, html:not(.lshelf-no-theme) .formDialog {
+  background: var(--lshelf-bg) !important;
+  color: var(--lshelf-text);
+}
+html:not(.lshelf-no-theme) body, html:not(.lshelf-no-theme) button, html:not(.lshelf-no-theme) input,
+html:not(.lshelf-no-theme) select, html:not(.lshelf-no-theme) textarea, html:not(.lshelf-no-theme) .emby-button {
+  font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+/* The video sits in a layer behind the player page, so the page must stay transparent while a video plays. */
+html:not(.lshelf-no-theme) #videoOsdPage,
+html:not(.lshelf-no-theme) .mainAnimatedPage:has(#videoOsdPage),
+html.transparentDocument body { background: transparent !important; }
+html:not(.lshelf-no-theme) .skinHeader {
+  background: linear-gradient(180deg, rgba(0, 0, 0, .85) 0%, rgba(0, 0, 0, 0) 100%) !important;
+  box-shadow: none !important;
+}
+html:not(.lshelf-no-theme) .emby-tab-button-active { border-bottom: 2px solid var(--lshelf-accent) !important; }
+html:not(.lshelf-no-theme) .sectionTitle, html:not(.lshelf-no-theme) .sectionTitle-cards { font-weight: 700 !important; color: #fff; }
+html:not(.lshelf-no-theme) .cardBox, html:not(.lshelf-no-theme) .cardScalable, html:not(.lshelf-no-theme) .cardImageContainer {
+  border-radius: var(--lshelf-radius) !important;
+}
+html:not(.lshelf-no-theme) .cardBox { background: transparent !important; box-shadow: none !important; }
+html:not(.lshelf-no-theme) .cardScalable { overflow: hidden; transition: transform .25s cubic-bezier(.2, .8, .2, 1), box-shadow .25s ease; }
+@media (hover: hover) {
+  html:not(.lshelf-no-theme) .card:hover .cardScalable, html:not(.lshelf-no-theme) .card:focus-within .cardScalable {
+    transform: scale(1.06); box-shadow: 0 14px 28px rgba(0, 0, 0, .6); z-index: 2; position: relative;
+  }
+}
+html:not(.lshelf-no-theme) .itemProgressBarForeground, html:not(.lshelf-no-theme) .countIndicator,
+html:not(.lshelf-no-theme) .playedIndicator { background: var(--lshelf-accent) !important; }
+html:not(.lshelf-no-theme) .button-submit, html:not(.lshelf-no-theme) .btnPlay.detailButton {
+  background: var(--lshelf-accent) !important; color: #fff !important; border-radius: 6px !important; font-weight: 700 !important;
+}
+html:not(.lshelf-no-theme) .button-submit:hover, html:not(.lshelf-no-theme) .btnPlay.detailButton:hover { background: var(--lshelf-accent-hover) !important; }
+html:not(.lshelf-no-theme) .detailButton { background: rgba(109, 109, 110, .7) !important; border-radius: 6px !important; }
+html:not(.lshelf-no-theme) .emby-input, html:not(.lshelf-no-theme) .emby-textarea, html:not(.lshelf-no-theme) .emby-select-withcolor {
+  background: var(--lshelf-surface-2) !important; border: 1px solid var(--lshelf-line) !important; border-radius: 8px !important;
+}
+html:not(.lshelf-no-theme) .mainDrawer, html:not(.lshelf-no-theme) .actionSheet { background: var(--lshelf-surface) !important; }
+html:not(.lshelf-no-theme) .navMenuOption-selected { border-left: 3px solid var(--lshelf-accent); }
+html:not(.lshelf-no-theme) .mdl-slider-background-lower { background: var(--lshelf-accent) !important; }
+html:not(.lshelf-no-theme) ::-webkit-scrollbar { width: 10px; height: 10px; }
+html:not(.lshelf-no-theme) ::-webkit-scrollbar-thumb { background: var(--lshelf-line); border-radius: 5px; }
+html:not(.lshelf-no-theme) ::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================ Home shelf */
+/* Jellyfin's own Home rows are hidden only while html.lshelf-shelf-on is set, which the script adds after a good render. */
+html.lshelf-shelf-on #homeTab > .homeSectionsContainer { display: none !important; }
+.lshelf-shelf { padding: 1.2em var(--lshelf-gutter) 3em; display: flex; flex-direction: column; gap: 2em; }
+.layout-mobile .lshelf-shelf { --lshelf-gutter: 16px; gap: 1.5em; }
+.lshelf-shelf a, .lshelf-browse a { color: inherit; text-decoration: none; }
+
+.lshelf-hero { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 1.6em; align-items: center;
+  background: var(--lshelf-surface); border: 1px solid var(--lshelf-line); border-radius: 16px; padding: 14px; }
+.layout-mobile .lshelf-hero { grid-template-columns: 1fr; }
+.layout-tv .lshelf-hero { grid-template-columns: minmax(0, 46vw) minmax(0, 1fr); }
+@media (max-width: 900px) { .lshelf-hero { grid-template-columns: 1fr; } }
+.lshelf-hero-still { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #0a0a0a; }
+.lshelf-hero-still img, .lshelf-still img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.lshelf-playbtn { position: absolute; inset: 0; margin: auto; width: 58px; height: 58px; border-radius: 50%; background: rgba(0, 0, 0, .65);
+  border: 2px solid #fff; display: grid; place-items: center; padding-left: 4px; font-size: 22px; color: #fff; }
+.lshelf-prog { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 4px; border-radius: 9px; background: rgba(255, 255, 255, .28); }
+.lshelf-prog i { display: block; height: 100%; border-radius: 9px; background: var(--lshelf-accent); }
+.lshelf-hero-body h1 { font-size: clamp(1.7em, 2.6vw, 2.7em); font-weight: 800; line-height: 1.02; margin: .25em 0 .2em; letter-spacing: -.02em; text-wrap: balance; }
+.lshelf-hero-body p { margin: 0 0 1em; color: var(--lshelf-muted); }
+.lshelf-btns { display: flex; gap: .6em; flex-wrap: wrap; }
+.lshelf-btn { display: inline-flex; align-items: center; justify-content: center; gap: .45em; border: 0; border-radius: 10px; cursor: pointer;
+  padding: .7em 1.2em; font-size: 1em; font-weight: 700; line-height: 1.2; font-family: inherit; background: rgba(255, 255, 255, .14); color: #fff !important; min-height: 44px; }
+.lshelf-btn.accent { background: var(--lshelf-accent); }
+.lshelf-btn:hover { filter: brightness(1.15); }
+
+.lshelf-rowh { display: flex; align-items: baseline; justify-content: space-between; gap: 1em; margin-bottom: .6em; }
+.lshelf-rowh h2 { margin: 0; font-size: 1.3em; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+.lshelf-rowh h2 span { margin-left: .6em; font-size: .62em; font-weight: 400; color: var(--lshelf-muted); }
+.lshelf-rowh > a { color: var(--lshelf-muted) !important; font-weight: 600; font-size: .9em; white-space: nowrap; }
+.lshelf-strip { display: grid; grid-auto-flow: column; grid-auto-columns: var(--lshelf-w); gap: 14px; overflow-x: auto; padding: 4px 2px 8px;
+  scroll-snap-type: x proximity; scrollbar-width: thin; }
+.lshelf-row.wide .lshelf-strip { grid-auto-columns: var(--lshelf-ww); }
+.lshelf-strip > .card { scroll-snap-align: start; }
+
+.lshelf-card { width: auto !important; min-width: 0; margin: 0 !important; }
+.lshelf-card .cardBox { margin: 0 !important; padding: 0 !important; }
+.lshelf-card .cardScalable { position: relative; aspect-ratio: 2 / 3; background: #232323; border-radius: 8px; overflow: hidden; }
+.lshelf-wide .cardScalable { aspect-ratio: 16 / 9; }
+.lshelf-card .lshelf-poster, .lshelf-card .lshelf-still { position: absolute; inset: 0; display: block; border-radius: 8px; overflow: hidden; }
+.lshelf-poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.lshelf-ph { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 10px 30px; font-weight: 800; font-size: clamp(11px, 1vw, 16px);
+  line-height: 1.06; color: #fff; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; z-index: 0; }
+.lshelf-t { margin-top: 6px; font-weight: 600; color: var(--lshelf-text); font-size: .92em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lshelf-s { color: var(--lshelf-muted); font-size: .8em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lshelf-badge { position: absolute; top: 7px; left: 7px; z-index: 3; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; line-height: 1.2;
+  background: var(--lshelf-accent); color: #fff; white-space: nowrap; max-width: calc(100% - 14px); overflow: hidden; text-overflow: ellipsis; }
+.lshelf-badge.quiet { background: rgba(38, 38, 38, .92); border: 1px solid rgba(255, 255, 255, .3); }
+@media (hover: hover) { .lshelf-card:hover .cardScalable { outline: 2px solid #fff; } }
+.lshelf-card a:focus-visible, .lshelf-hero a:focus-visible, .lshelf-btn:focus-visible, .lshelf-chip:focus-visible, .lshelf-rowh a:focus-visible {
+  outline: 3px solid #fff; outline-offset: 2px;
+}
+.lshelf-empty { text-align: center; padding: 2.4em 1em; color: var(--lshelf-muted); border: 1px dashed #4a4a4a; border-radius: 14px; }
+
+/* ============================================================ Genre browsing (Movies / Shows) */
+html.lshelf-browse-on #moviesPage .itemsContainer:not(.lshelf-grid),
+html.lshelf-browse-on #tvshowsPage .itemsContainer:not(.lshelf-grid),
+html.lshelf-browse-on #moviesPage .alphaPicker-fixed-right,
+html.lshelf-browse-on #tvshowsPage .alphaPicker-fixed-right,
+html.lshelf-browse-on header.MuiAppBar-root button[title="Filter"],
+html.lshelf-browse-on header.MuiAppBar-root button[title="Sort"],
+html.lshelf-browse-on header.MuiAppBar-root button[title="View settings"] { display: none !important; }
+.lshelf-browse { padding: 1em var(--lshelf-gutter) 3em; display: flex; flex-direction: column; gap: 1em; }
+.layout-mobile .lshelf-browse { --lshelf-gutter: 16px; }
+.lshelf-bhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 1em; flex-wrap: wrap; }
+.lshelf-bhead p { margin: .2em 0 0; color: var(--lshelf-muted); }
+.lshelf-bctl { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; }
+.lshelf-sel { background: var(--lshelf-surface-2) !important; color: var(--lshelf-text); border: 1px solid var(--lshelf-line) !important; border-radius: 8px !important; padding: .55em .8em; font-weight: 600; }
+.lshelf-tog { display: inline-flex; gap: .5em; align-items: center; color: var(--lshelf-muted); font-weight: 600; cursor: pointer; }
+.lshelf-tog input { accent-color: var(--lshelf-accent); width: 18px; height: 18px; }
+.lshelf-chips { display: flex; gap: .5em; flex-wrap: wrap; }
+.layout-mobile .lshelf-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.lshelf-chip { border: 1px solid var(--lshelf-line); background: var(--lshelf-surface); color: var(--lshelf-text); border-radius: 999px; padding: .5em 1em;
+  font-weight: 600; cursor: pointer; white-space: nowrap; min-height: 40px; }
+.lshelf-chip[aria-pressed="true"] { background: var(--lshelf-accent); border-color: var(--lshelf-accent); color: #fff; }
+.lshelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--lshelf-w), 1fr)); gap: 16px 14px; }
+.lshelf-browse .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ============================================================ Header menu (header-nav.js) */
+.lshelf-menu { position: fixed; z-index: 2000; min-width: 180px; padding: 6px; background: var(--lshelf-surface); border: 1px solid var(--lshelf-line);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.lshelf-menu a { display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; color: var(--lshelf-text); text-decoration: none; font: 600 15px system-ui, sans-serif; }
+.lshelf-menu a:hover, .lshelf-menu a:focus-visible { background: rgba(255, 255, 255, .12); outline: none; }
+.lshelf-menu a:focus-visible { box-shadow: 0 0 0 3px #fff inset; }
+
+/* ============================================================ Next-season dialog and toast */
+.lshelf-dialog { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .6); padding: 16px; font-family: inherit; }
+.lshelf-dialog-box { width: min(420px, 100%); background: var(--lshelf-surface); color: var(--lshelf-text); border-radius: 8px; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, .6); }
+.lshelf-dialog-art { height: 150px; background: #141414 center / cover no-repeat; }
+.lshelf-dialog-body { padding: 18px 22px 22px; }
+.lshelf-dialog-title { font-size: 1.25em; font-weight: 700; margin-bottom: 6px; color: #fff; }
+.lshelf-dialog-text { color: var(--lshelf-muted); font-size: .95em; margin-bottom: 18px; }
+.lshelf-dialog-btns { display: flex; gap: 10px; justify-content: flex-end; }
+.lshelf-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 99999; background: #fff; color: #000; padding: 10px 16px;
+  border-radius: 6px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); max-width: calc(100% - 32px); }
+
+/* ============================================================ TV layout (html.layout-tv) */
+/* Plain :focus rules: older TV browsers drop a whole rule that uses :focus-visible. */
+.layout-tv .lshelf-shelf { --lshelf-w: 15vw; --lshelf-ww: 26vw; font-size: 1.15em; }
+.layout-tv .lshelf-shelf a:focus, .layout-tv .lshelf-shelf button:focus { outline: 3px solid #fff !important; outline-offset: 2px; }
+.layout-tv .lshelf-card .cardScalable a:focus { outline: none !important; }
+.layout-tv .lshelf-card .cardScalable:focus-within::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 4; pointer-events: none;
+  border: 4px solid var(--lshelf-accent); border-radius: 8px;
+}
+.layout-tv .card:focus-within .cardScalable { transform: none !important; }
+.layout-tv .lshelf-badge { font-size: 15px; padding: 3px 8px; top: 9px; left: 9px; }
+
+@media (prefers-reduced-motion: reduce) { .cardScalable { transition: none !important; } }

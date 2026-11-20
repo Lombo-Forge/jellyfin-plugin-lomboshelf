@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>LomboShelf</title>
+</head>
+<body>
+<div id="LomboShelfConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2>LomboShelf</h2>
+            <p id="lshelfFt" hidden>The File Transformation plugin was not found, so LomboShelf cannot add itself to the web client. Install it and restart Jellyfin.</p>
+            <form id="LomboShelfForm">
+                <h3>Theme</h3>
+                <div class="inputContainer"><label class="inputLabel" for="Accent">Accent colour</label><input is="emby-input" type="text" id="Accent"></div>
+                <div class="inputContainer"><label class="inputLabel" for="Bg">Background</label><input is="emby-input" type="text" id="Bg"></div>
+                <div class="inputContainer"><label class="inputLabel" for="Surface">Surface</label><input is="emby-input" type="text" id="Surface"></div>
+                <div class="inputContainer"><label class="inputLabel" for="Text">Text</label><input is="emby-input" type="text" id="Text"></div>
+                <div class="inputContainer"><label class="inputLabel" for="Muted">Muted text</label><input is="emby-input" type="text" id="Muted"></div>
+                <h3>Features</h3>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureTheme"><span>Theme</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureHomeShelf"><span>Home shelf</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureBrowse"><span>Genre browsing</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureNextSeason"><span>Next-season prompt</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="FeatureHeaderNav"><span>Header menu</span></label>
+                <h3>Home shelf rows</h3>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ShelfResume"><span>Resume</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ShelfKeepWatching"><span>Keep watching</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ShelfNewThisWeek"><span>New this week</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ShelfGenres"><span>Genre rows</span></label>
+                <div class="inputContainer"><label class="inputLabel" for="ShelfGenreLimit">Genre row limit (0 = all)</label><input is="emby-input" type="number" id="ShelfGenreLimit" min="0"></div>
+                <h3>Other</h3>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="NextSeasonShowArt"><span>Show backdrop art in the next-season dialog</span></label>
+                <div class="inputContainer"><label class="inputLabel" for="BrowseMergeLibraries">Libraries to merge when browsing (comma separated)</label><input is="emby-input" type="text" id="BrowseMergeLibraries"></div>
+                <div class="inputContainer"><label class="inputLabel" for="HeaderNavOrder">Header menu order (comma separated)</label><input is="emby-input" type="text" id="HeaderNavOrder"></div>
+                <div class="inputContainer"><label class="inputLabel" for="HeaderNavHide">Header menu hidden (comma separated)</label><input is="emby-input" type="text" id="HeaderNavHide"></div>
+                <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+            </form>
+        </div>
+    </div>
+    <script type="text/javascript">
+        (function () {
+            var pluginId = "6f1c2a54-3b7d-4e0a-9c85-2d41a7e0b913";
+            var texts = ["Accent", "Bg", "Surface", "Text", "Muted"];
+            var bools = ["FeatureTheme", "FeatureHomeShelf", "FeatureBrowse", "FeatureNextSeason", "FeatureHeaderNav",
+                "ShelfResume", "ShelfKeepWatching", "ShelfNewThisWeek", "ShelfGenres", "NextSeasonShowArt"];
+            var lists = ["BrowseMergeLibraries", "HeaderNavOrder", "HeaderNavHide"];
+            var page = document.querySelector("#LomboShelfConfigPage");
+            function el(id) { return page.querySelector("#" + id); }
+            function split(s) { return s.split(",").map(function (x) { return x.trim(); }).filter(Boolean); }
+
+            page.addEventListener("pageshow", function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                    texts.forEach(function (k) { el(k).value = c[k] || ""; });
+                    bools.forEach(function (k) { el(k).checked = !!c[k]; });
+                    lists.forEach(function (k) { el(k).value = (c[k] || []).join(", "); });
+                    el("ShelfGenreLimit").value = c.ShelfGenreLimit || 0;
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+            el("LomboShelfForm").addEventListener("submit", function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                    texts.forEach(function (k) { c[k] = el(k).value; });
+                    bools.forEach(function (k) { c[k] = el(k).checked; });
+                    lists.forEach(function (k) { c[k] = split(el(k).value); });
+                    c.ShelfGenreLimit = parseInt(el("ShelfGenreLimit").value, 10) || 0;
+                    ApiClient.updatePluginConfiguration(pluginId, c).then(Dashboard.processPluginConfigurationUpdateResult);
+                });
+                return false;
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

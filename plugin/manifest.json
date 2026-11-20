@@ -1,0 +1,20 @@
+[
+  {
+    "guid": "6f1c2a54-3b7d-4e0a-9c85-2d41a7e0b913",
+    "name": "LomboShelf",
+    "description": "Streaming-style Home shelf, genre browsing and theme for Jellyfin's web client. Needs the File Transformation plugin.",
+    "overview": "Streaming-style Home for the web client",
+    "owner": "Lombo-Forge",
+    "category": "General",
+    "versions": [
+      {
+        "version": "0.1.0.0",
+        "changelog": "Template entry. Replace sourceUrl, checksum and timestamp from a real release zip (jprm fills them in).",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/Lombo-Forge/jellyfin-plugin-lomboshelf/releases/download/v0.1.0/lomboshelf_0.1.0.0.zip",
+        "checksum": "REPLACE_WITH_MD5_FROM_JPRM",
+        "timestamp": "1970-01-01T00:00:00Z"
+      }
+    ]
+  }
+]

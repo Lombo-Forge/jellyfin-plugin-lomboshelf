@@ -1,0 +1,18 @@
+{
+  "name": "lombo-shelf-web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Web assets of LomboShelf (not published to npm). Dev tools only.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint web tests",
+    "test": "node --test tests/web.test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "jsdom": "^25.0.0"
+  }
+}
