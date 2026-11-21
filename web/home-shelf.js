@@ -1,6 +1,7 @@
 /*
  * LomboShelf: the shelf Home. Adds, above Jellyfin's own Home rows,
- *   a Resume card, Keep watching, New this week, and one row per genre.
+ *   a Resume card, Keep watching, New this week, optional collection rows (setting collectionRows, off by default),
+ *   and one row per genre.
  * Everything else on Home (the Favorites tab, the page itself) stays Jellyfin's.
  *
  * Fail-open: Jellyfin's own rows are hidden only (class lshelf-shelf-on on <html>) after the shelf has
@@ -26,6 +27,24 @@
       resume: c.resume !== false, keepWatching: c.keepWatching !== false, newThisWeek: c.newThisWeek !== false,
       genres: c.genres !== false, genreLimit: Number(c.genreLimit) > 0 ? Number(c.genreLimit) : 0
     };
+  }
+
+  // Collection rows (off by default): cfg.collectionRows = [{name, title?, limit?}]. At most 5 rows, limit 1-50 (default 16).
+  var MAX_COLL_ROWS = 5, MAX_COLL_LIMIT = 50, DEFAULT_COLL_LIMIT = 16;
+  function collectionRows() {
+    var list = (window.__lomboShelfUI && window.__lomboShelfUI.cfg().collectionRows) || [];
+    if (!Array.isArray(list)) return [];
+    var out = [];
+    list.forEach(function (r) {
+      if (out.length >= MAX_COLL_ROWS || !r || typeof r.name !== "string" || !r.name.trim()) return;
+      var n = Math.floor(Number(r.limit));
+      out.push({
+        name: r.name.trim(),
+        title: typeof r.title === "string" && r.title.trim() ? r.title.trim() : "",
+        limit: n >= 1 ? Math.min(n, MAX_COLL_LIMIT) : DEFAULT_COLL_LIMIT
+      });
+    });
+    return out;
   }
 
   function onHome() { return /^#\/home(\?|$)/.test(location.hash) && !/tab=1/.test(location.hash); }
@@ -118,6 +137,9 @@
     if (s.newThisWeek && d.latest.length) {
       parts.push(U.row("New this week", d.latest.map(function (it) { return U.card(it, { badge: "NEW", cls: "new" }); }).join(""), { id: "lshelf-new" }));
     }
+    collectionRows().forEach(function (c, i) {
+      parts.push('<div class="lshelf-collslot" data-i="' + i + '"></div>');
+    });
     if (s.genres) {
       var names = s.genreLimit ? d.genres.slice(0, s.genreLimit) : d.genres;
       names.forEach(function (g, i) {
@@ -147,6 +169,33 @@
     } catch (e) { slot.remove(); }
   }
 
+  // One collection row. The collection is found by its exact name (the server search is looser, so the result is
+  // filtered); a missing collection, an empty one or any error removes the slot and nothing else changes.
+  async function fillCollection(U, slot, c) {
+    try {
+      var uid = U.uid();
+      var found = await U.jf("Users/" + uid + "/Items", {
+        IncludeItemTypes: "BoxSet", Recursive: true, NameStartsWith: c.name, Limit: 50, EnableTotalRecordCount: false
+      });
+      var box = ((found && found.Items) || []).filter(function (b) { return b && b.Name === c.name && b.Id; })[0];
+      if (!box) { slot.remove(); return; }
+      var r = await U.jf("Users/" + uid + "/Items", {
+        ParentId: box.Id, Limit: c.limit, Fields: U.FIELDS + ",UserData", EnableTotalRecordCount: false
+      });
+      var items = ((r && r.Items) || []).slice(0, c.limit);
+      if (!items.length || !slot.isConnected) { slot.remove(); return; }
+      slot.outerHTML = U.row(c.title || c.name, items.map(function (it) { return U.card(it); }).join(""), { cls: "collection" });
+    } catch (e) { slot.remove(); }
+  }
+
+  function fillCollections(U, root) {
+    var rows = collectionRows();
+    [].slice.call(root.querySelectorAll(".lshelf-collslot")).forEach(function (slot) {
+      var c = rows[Number(slot.dataset.i)];
+      if (c) fillCollection(U, slot, c); else slot.remove();
+    });
+  }
+
   function lazyGenres(U, d, root) {
     var slots = [].slice.call(root.querySelectorAll(".lshelf-lazy"));
     if (!("IntersectionObserver" in window)) { slots.forEach(function (s) { fillGenre(U, d, s); }); return; }
@@ -171,6 +220,7 @@
       var d = await load(U);
       if (!root.isConnected) return;
       render(U, d, root);
+      fillCollections(U, root);
       lazyGenres(U, d, root);
       HTML.classList.add("lshelf-shelf-on");
       failedAt = 0;

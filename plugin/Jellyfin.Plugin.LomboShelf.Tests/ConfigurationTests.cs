@@ -130,6 +130,53 @@ public class ConfigurationTests
     }
 
     [Fact]
+    public void CollectionRows_AreOffByDefault()
+    {
+        Assert.Empty(new PluginConfiguration().CollectionRows);
+    }
+
+    [Fact]
+    public void CollectionRows_AreTrimmedAndBlankNamesDropped_AndLimitZeroTakesTheDefault()
+    {
+        var c = new PluginConfiguration
+        {
+            CollectionRows = new[]
+            {
+                new CollectionRow { Name = "  Leaving soon ", Title = " Going ", Limit = 0 },
+                new CollectionRow { Name = "   ", Title = "x", Limit = 5 },
+                new CollectionRow { Name = "Picks", Limit = 50 }
+            }
+        };
+        Assert.Empty(ConfigSanitizer.Sanitize(c));
+        Assert.Equal(2, c.CollectionRows.Length);
+        Assert.Equal("Leaving soon", c.CollectionRows[0].Name);
+        Assert.Equal("Going", c.CollectionRows[0].Title);
+        Assert.Equal(16, c.CollectionRows[0].Limit);
+        Assert.Equal(50, c.CollectionRows[1].Limit);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(51)]
+    public void CollectionRows_RejectALimitOutsideOneToFifty(int limit)
+    {
+        var c = new PluginConfiguration { CollectionRows = new[] { new CollectionRow { Name = "A", Limit = limit } } };
+        Assert.Single(ConfigSanitizer.Sanitize(c));
+    }
+
+    [Fact]
+    public void CollectionRows_RejectMoreThanFiveAndTooLongText()
+    {
+        var six = Enumerable.Range(1, 6).Select(i => new CollectionRow { Name = "C" + i }).ToArray();
+        Assert.Single(ConfigSanitizer.Sanitize(new PluginConfiguration { CollectionRows = six }));
+
+        var longName = new PluginConfiguration { CollectionRows = new[] { new CollectionRow { Name = new string('x', 101) } } };
+        Assert.Single(ConfigSanitizer.Sanitize(longName));
+        var longTitle = new PluginConfiguration { CollectionRows = new[] { new CollectionRow { Name = "A", Title = new string('x', 101) } } };
+        Assert.Single(ConfigSanitizer.Sanitize(longTitle));
+    }
+
+    [Fact]
     public void Configuration_SurvivesAJsonRoundTrip()
     {
         // The settings page posts the whole object as JSON and the controller binds it back.

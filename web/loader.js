@@ -17,6 +17,7 @@
     theme: { bg: "#141414", surface: "#1f1f1f", surface2: "#2a2a2a", text: "#e5e5e5", muted: "#a3a3a3", accent: "#e50914", accentHover: "#f6121d", radius: "6px" },
     features: { theme: true, homeShelf: true, browse: true, nextSeason: false, headerNav: false },
     shelf: { resume: true, keepWatching: true, newThisWeek: true, genres: true, genreLimit: 0 },
+    collectionRows: [],
     browse: { mergeLibraries: [] },
     nextSeason: { showArt: true },
     headerNav: null
