@@ -203,3 +203,36 @@ test("next season prompt is off by default and asks once when enabled", async ()
   assert.deepEqual(posts[0][1], { mediaType: "tv", mediaId: 42, seasons: [2] });
   assert.match(on.w.document.querySelector(".lshelf-toast").textContent, /Season 2 of Some Show is on its way/);
 });
+
+test("next season prompt handles a burst of played episodes a few at a time", async () => {
+  const on = page({ cfg: { nextSeason: { enabled: true, showArt: false } } });
+  let handler;
+  on.w.ApiClient.subscribe = (_t, fn) => { handler = fn; };
+  let active = 0;
+  let peak = 0;
+  let total = 0;
+  on.w.fetch = async () => {
+    active++; total++;
+    peak = Math.max(peak, active);
+    await tick(15);
+    active--;
+    return { ok: true, status: 200, json: async () => ({ Id: "x", Type: "Movie" }) };   // not an episode: stops after one call
+  };
+  on.w.eval(src("next-season.js"));
+  await tick(1100);
+  const list = Array.from({ length: 12 }, (_, i) => ({ ItemId: "ep" + i, Played: true }));
+  handler({ Data: { UserId: "u1", UserDataList: list } });
+  await tick(300);
+  assert.equal(total, 12, "every item is still handled");
+  assert.ok(peak <= 2, "at most 2 requests at once, saw " + peak);
+});
+
+test("loader adds the plugin version to the files it loads", async () => {
+  const { w } = page({ cfg: { features: { theme: true, homeShelf: false, browse: false, nextSeason: false, headerNav: false } } });
+  Object.defineProperty(w.document, "currentScript", { value: { src: "http://localhost/LomboShelf/web/loader.js?v=1.2.3.0" } });
+  w.eval(src("loader.js"));
+  const hrefs = Array.from(w.document.head.querySelectorAll("link,script")).map((e) => e.href || e.src);
+  assert.ok(hrefs.some((h) => h.endsWith("lomboshelf.css?v=1.2.3.0")), hrefs.join());
+  await tick();
+  assert.ok(Array.from(w.document.head.querySelectorAll("script")).some((e) => e.src.endsWith("ui.js?v=1.2.3.0")));
+});

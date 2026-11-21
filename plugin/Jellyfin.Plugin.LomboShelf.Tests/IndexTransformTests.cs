@@ -55,6 +55,20 @@ public class IndexTransformTests
     }
 
     [Fact]
+    public void Apply_AddsTheVersionToTheLoaderUrl()
+    {
+        Assert.Contains("src=\"/x/loader.js?v=1.2.3.0\"", IndexTransform.Apply(Page, "{}", "/x/", "1.2.3.0"));
+    }
+
+    [Fact]
+    public void Apply_DropsUnsafeVersionCharacters()
+    {
+        var html = IndexTransform.Apply(Page, "{}", "/x/", "1\"><script>");
+        Assert.Contains("loader.js?v=1script\"", html);
+        Assert.DoesNotContain("\"><script>", html);
+    }
+
+    [Fact]
     public void BuildConfigJson_EscapesSoItCannotCloseTheScriptTag()
     {
         var c = new PluginConfiguration
