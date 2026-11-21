@@ -24,6 +24,29 @@
   // Jellyfin API. ApiClient.getJSON signs the request with the signed-in user's token.
   function jf(path, params) { return api().getJSON(api().getUrl(path, params || {})); }
 
+  // The signed-in user's own call to a LomboShelf route (their token, nothing else). Resolves { status, body }; body is null
+  // when the answer has none or is not JSON. Rejects only when the request itself fails.
+  async function own(path, options) {
+    var a = api();
+    var o = options || {};
+    var res = await fetch(a.getUrl(path), { method: o.method || "GET", body: o.body,
+      headers: Object.assign({ "Authorization": 'MediaBrowser Token="' + a.accessToken() + '"' }, o.headers || {}) });
+    var body = null;
+    if (res.status !== 204) { try { body = await res.json(); } catch (e) { body = null; } }
+    return { status: res.status, body: body };
+  }
+
+  // The id of the item on a details page (#/details?id=...), or "" on any other page.
+  function detailsId() {
+    var m = location.hash.match(/^#\/details\?(?:[^#]*&)?id=([0-9a-fA-F-]{32,36})(?:&|$)/);
+    return m ? m[1] : "";
+  }
+
+  // Where our small note goes on a details page: after the title block. Null when the page has none (we then show nothing).
+  function titleAnchor() {
+    return document.querySelector(".itemName, .nameContainer, .detailPagePrimaryContainer");
+  }
+
   function isTV() { return document.documentElement.classList.contains("layout-tv"); }
 
   function minutes(ticks) { return Math.max(0, Math.round((ticks || 0) / 6e8)); }
@@ -128,7 +151,7 @@
   var FIELDS = "PrimaryImageAspectRatio,RunTimeTicks,ChildCount,ProductionYear,BasicSyncInfo";
 
   window.__lomboShelfUI = {
-    esc: esc, ready: ready, uid: uid, jf: jf, cfg: cfg, isTV: isTV, sub: sub, img: img, poster: poster, still: still,
+    esc: esc, own: own, detailsId: detailsId, titleAnchor: titleAnchor, ready: ready, uid: uid, jf: jf, cfg: cfg, isTV: isTV, sub: sub, img: img, poster: poster, still: still,
     href: href, card: card, wide: wide, play: play, row: row, FIELDS: FIELDS, dur: dur, minutes: minutes
   };
 })();

@@ -23,7 +23,7 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 |---|---|
 | `web/loader.js` | The one script the plugin adds to index.html: settings, theme variables, loads the rest. |
 | `web/ui.js` | Shared helpers (`window.__lomboShelfUI`). |
-| `web/home-shelf.js`, `browse-genres.js`, `next-season.js`, `header-nav.js` | The features. |
+| `web/home-shelf.js`, `browse-genres.js`, `next-season.js`, `header-nav.js`, `storage-tag.js`, `keep-button.js` | The features. The last two are off by default and talk to the plugin's own routes (`plugin/.../Api/IntegrationController.cs`); the token and file paths stay on the server. |
 | `web/lomboshelf.css` | Theme and layout; colours are `--lshelf-*` variables. |
 | `plugin/` | C# plugin skeleton (`Jellyfin.Plugin.LomboShelf/`, its xUnit project `Jellyfin.Plugin.LomboShelf.Tests/`, `build.yaml`, `manifest.json` template). Embeds `web/`. |
 | `scripts/package-plugin.sh` | Builds the plugin zip, prints its md5 and the manifest entry (the release workflow runs it). |

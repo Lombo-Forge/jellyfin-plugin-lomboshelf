@@ -47,7 +47,113 @@ public static class ConfigSanitizer
             c.HeaderNavGroupsJson = JsonSerializer.Serialize(groups);
         }
 
+        Integrations(c, errors);
         return errors;
+    }
+
+    public const int MaxToken = 256;
+    private const int MaxPath = 500;
+
+    /// <summary>The token to save: cleared on request, kept when the form sent none, else the new one. Returns it; never logs it.</summary>
+    public static string MergeToken(PluginConfiguration incoming, string? stored)
+    {
+        if (incoming.ClearFarewellToken)
+        {
+            return string.Empty;
+        }
+
+        var sent = (incoming.FarewellToken ?? string.Empty).Trim();
+        return sent.Length == 0 ? (stored ?? string.Empty) : sent;
+    }
+
+    /// <summary>A copy that is safe to send to a browser: the token is blank and FarewellTokenSet says whether one is stored.</summary>
+    public static PluginConfiguration Redacted(PluginConfiguration c)
+    {
+        var copy = JsonSerializer.Deserialize<PluginConfiguration>(JsonSerializer.Serialize(c))!;
+        copy.FarewellTokenSet = !string.IsNullOrEmpty(c.FarewellToken);
+        copy.FarewellToken = string.Empty;
+        copy.ClearFarewellToken = false;
+        return copy;
+    }
+
+    private static void Integrations(PluginConfiguration c, List<string> errors)
+    {
+        c.TiersFile = (c.TiersFile ?? string.Empty).Trim();
+        c.TiersPathPrefix = (c.TiersPathPrefix ?? string.Empty).Trim();
+        c.LeavingFile = (c.LeavingFile ?? string.Empty).Trim();
+        c.FarewellUrl = (c.FarewellUrl ?? string.Empty).Trim();
+        c.FarewellToken = (c.FarewellToken ?? string.Empty).Trim();
+
+        AbsolutePath(c.TiersFile, "Tiers file", errors);
+        AbsolutePath(c.LeavingFile, "Leaving file", errors);
+
+        if (c.TiersPathPrefix.Length > MaxPath || c.TiersPathPrefix.Any(char.IsControl)
+            || c.TiersPathPrefix.Replace('\\', '/').Split('/').Contains(".."))
+        {
+            errors.Add("Tiers path prefix: at most 500 characters, no control characters and no \"..\".");
+        }
+
+        if (c.FarewellUrl.Length > 0)
+        {
+            var url = BaseUrl(c.FarewellUrl);
+            if (url is null)
+            {
+                errors.Add("Farewell address: use http:// or https:// then the host and port only (no user name, path or query).");
+            }
+            else
+            {
+                c.FarewellUrl = url;
+            }
+        }
+
+        if (c.FarewellToken.Length > MaxToken || c.FarewellToken.Any(ch => ch < '!' || ch > '~'))
+        {
+            errors.Add($"Farewell token: at most {MaxToken} characters, visible characters only (no spaces or control characters).");
+        }
+
+        if (c.StorageTagsEnabled && c.TiersFile.Length == 0)
+        {
+            errors.Add("Storage tags need the tiers file path.");
+        }
+
+        if (c.KeepEnabled)
+        {
+            if (c.LeavingFile.Length == 0) errors.Add("The keep button needs the leaving file path.");
+            if (c.FarewellUrl.Length == 0) errors.Add("The keep button needs the Farewell address.");
+            if (c.FarewellToken.Length == 0) errors.Add("The keep button needs the Farewell token.");
+        }
+    }
+
+    private static void AbsolutePath(string value, string name, List<string> errors)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        var rooted = value[0] == '/' || Regex.IsMatch(value, @"^[A-Za-z]:[\\/]", RegexOptions.NonBacktracking);
+        if (!rooted || value.Length > MaxPath || value.Any(char.IsControl) || value.Replace('\\', '/').Split('/').Contains(".."))
+        {
+            errors.Add($"{name}: an absolute path (as Jellyfin sees it), at most 500 characters, no \"..\".");
+        }
+    }
+
+    /// <summary>"scheme://host[:port]" for an http or https address with nothing else in it; null when it is anything else.</summary>
+    public static string? BaseUrl(string value)
+    {
+        if (value.Length > MaxPath || value.Any(ch => char.IsControl(ch) || char.IsWhiteSpace(ch)) || value.IndexOfAny(new[] { '?', '#', '@', '\\' }) >= 0)
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var u)
+            || (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps)
+            || u.UserInfo.Length > 0 || u.Host.Length == 0 || u.AbsolutePath != "/")
+        {
+            return null;
+        }
+
+        return u.GetLeftPart(UriPartial.Authority);
     }
 
     public const int MaxCollectionRows = 5;

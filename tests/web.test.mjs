@@ -345,3 +345,156 @@ test("collection rows: loader defaults to an empty list and keeps a given list",
   b.w.eval(src("loader.js"));
   assert.equal(JSON.stringify(b.w.LomboShelfConfig.collectionRows), '[{"name":"X"}]');
 });
+
+// ---- storage tag and keep button (off by default; they call the plugin's own routes) ----
+const ID = "0123456789abcdef0123456789abcdef";
+const detailsHtml = '<div id="itemDetailPage"><div class="nameContainer"><h1 class="itemName">A Film</h1></div></div>';
+
+// A fake fetch that answers by "METHOD path" and records the calls. `routes[key]` is { status, body } or a function.
+function withFetch(w, routes) {
+  const calls = [];
+  w.fetch = async (url, opts = {}) => {
+    const key = (opts.method || "GET") + " " + url;
+    calls.push({ key, opts });
+    const r = typeof routes[key] === "function" ? routes[key](opts) : routes[key];
+    if (!r) throw new Error("unexpected " + key);
+    if (r.reject) throw new Error("network");
+    return { status: r.status, ok: r.status < 300, json: async () => { if (r.body === undefined) throw new Error("no body"); return r.body; } };
+  };
+  return calls;
+}
+const detailsPage = (cfg, extra = {}) => page({ hash: "#/details?id=" + ID, html: detailsHtml, cfg, ...extra });
+
+test("storage tag and keep button do nothing by default", async () => {
+  const { w } = detailsPage({});
+  const calls = withFetch(w, {});
+  w.eval(src("storage-tag.js"));
+  w.eval(src("keep-button.js"));
+  await tick();
+  assert.equal(calls.length, 0);
+  assert.equal(w.document.querySelector(".lshelf-storage-tag, .lshelf-keep-box"), null);
+});
+
+test("loader loads the two scripts only when their switch is on", async () => {
+  const a = page({ cfg: { features: { homeShelf: false, browse: false } } });
+  a.w.eval(src("loader.js"));
+  assert.equal(a.w.LomboShelfConfig.features.storageTags, false);
+  assert.equal(a.w.LomboShelfConfig.features.keep, false);
+  const b = page({ cfg: { features: { homeShelf: false, browse: false, storageTags: true, keep: true } } });
+  b.w.eval(src("loader.js"));
+  assert.equal(b.w.LomboShelfConfig.features.storageTags, true);
+});
+
+test("storage tag shows SSD once per page view and asks only the plugin route", async () => {
+  const { w } = detailsPage({ features: { storageTags: true } });
+  const calls = withFetch(w, { ["GET /LomboShelf/storage/" + ID]: { status: 200, body: { tier: "ssd" } } });
+  w.eval(src("storage-tag.js"));
+  await tick(80);
+  const tag = w.document.querySelector("#lshelf-storage-tag");
+  assert.equal(tag.textContent, "SSD");
+  assert.ok(tag.classList.contains("ssd"));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts.headers.Authorization, 'MediaBrowser Token="tok"');
+  w.dispatchEvent(new w.Event("hashchange"));   // same id, rebuilt page: re-asks (new page view) but never twice for one view
+  await tick(120);
+  assert.equal(w.document.querySelectorAll("#lshelf-storage-tag").length, 1);
+});
+
+test("storage tag shows HDD, and nothing on 204, an error, junk or a non-details page", async () => {
+  const hdd = detailsPage({ features: { storageTags: true } });
+  withFetch(hdd.w, { ["GET /LomboShelf/storage/" + ID]: { status: 200, body: { tier: "hdd" } } });
+  hdd.w.eval(src("storage-tag.js"));
+  await tick(80);
+  assert.equal(hdd.w.document.querySelector("#lshelf-storage-tag").textContent, "HDD");
+  for (const r of [{ status: 204 }, { status: 500 }, { reject: true }, { status: 200, body: { tier: "<img src=x>" } }, { status: 200, body: { tier: "tape" } }, { status: 200 }]) {
+    const p = detailsPage({ features: { storageTags: true } });
+    withFetch(p.w, { ["GET /LomboShelf/storage/" + ID]: r });
+    p.w.eval(src("storage-tag.js"));
+    await tick(80);
+    assert.equal(p.w.document.querySelector("#lshelf-storage-tag"), null, JSON.stringify(r));
+    assert.equal(p.w.document.querySelector("img"), null);
+  }
+  const home = page({ cfg: { features: { storageTags: true } } });
+  const calls = withFetch(home.w, {});
+  home.w.eval(src("storage-tag.js"));
+  await tick(80);
+  assert.equal(calls.length, 0);
+});
+
+const leaving = (extra = {}) => ({ ["GET /LomboShelf/leaving/" + ID]: { status: 200, body: { days_left: 3, can_keep: true } }, ...extra });
+
+test("keep: shows the note and button, posts the id, shows the message and re-checks", async () => {
+  const { w } = detailsPage({ features: { keep: true } });
+  let left = { days_left: 3, can_keep: true };
+  const calls = withFetch(w, {
+    ["GET /LomboShelf/leaving/" + ID]: () => ({ status: 200, body: left }),
+    "POST /LomboShelf/keep": () => { left = { days_left: 30, can_keep: false }; return { status: 200, body: { ok: true, message: "Kept for 30 more days" } }; },
+  });
+  w.eval(src("keep-button.js"));
+  await tick(80);
+  assert.equal(w.document.querySelector(".lshelf-keep-note").textContent, "Leaving in 3 days");
+  const btn = w.document.querySelector(".lshelf-keep-btn");
+  assert.equal(btn.textContent, "Keep it longer");
+  btn.click();
+  assert.ok(btn.disabled, "disabled while waiting");
+  await tick(80);
+  const post = calls.find((c) => c.key.startsWith("POST"));
+  assert.equal(post.opts.body, JSON.stringify({ itemId: ID }));
+  assert.equal(post.opts.headers["Content-Type"], "application/json");
+  assert.equal(calls.filter((c) => c.key.startsWith("GET")).length, 2, "checked again afterwards");
+  assert.equal(w.document.querySelector(".lshelf-keep-msg").textContent, "Kept for 30 more days");
+  assert.equal(w.document.querySelector(".lshelf-keep-note").textContent, "Leaving in 30 days");
+  assert.equal(w.document.querySelector(".lshelf-keep-btn"), null, "no button once it cannot be kept");
+});
+
+test("keep: wording for no date, one day, no button without can_keep, nothing on 204", async () => {
+  const cases = [[{ days_left: null, can_keep: false }, "Leaving soon", false], [{ days_left: 1, can_keep: true }, "Leaving in 1 day", true], [{ days_left: 0, can_keep: false }, "Leaving today", false]];
+  for (const [body, text, button] of cases) {
+    const p = detailsPage({ features: { keep: true } });
+    withFetch(p.w, leaving({ ["GET /LomboShelf/leaving/" + ID]: { status: 200, body } }));
+    p.w.eval(src("keep-button.js"));
+    await tick(80);
+    assert.equal(p.w.document.querySelector(".lshelf-keep-note").textContent, text);
+    assert.equal(!!p.w.document.querySelector(".lshelf-keep-btn"), button);
+  }
+  for (const r of [{ status: 204 }, { status: 404 }, { reject: true }]) {
+    const p = detailsPage({ features: { keep: true } });
+    withFetch(p.w, { ["GET /LomboShelf/leaving/" + ID]: r });
+    p.w.eval(src("keep-button.js"));
+    await tick(80);
+    assert.equal(p.w.document.querySelector(".lshelf-keep-box"), null);
+  }
+});
+
+test("keep: refusal text is shown as text, a server error shows only a generic line", async () => {
+  const refuse = detailsPage({ features: { keep: true } });
+  withFetch(refuse.w, leaving({ "POST /LomboShelf/keep": { status: 422, body: { ok: false, message: '<img src=x onerror="alert(1)"> already kept' } } }));
+  refuse.w.eval(src("keep-button.js"));
+  await tick(80);
+  refuse.w.document.querySelector(".lshelf-keep-btn").click();
+  await tick(80);
+  assert.equal(refuse.w.document.querySelector(".lshelf-keep-msg").textContent, '<img src=x onerror="alert(1)"> already kept');
+  assert.equal(refuse.w.document.querySelector("img"), null, "set as text, never as HTML");
+
+  for (const r of [{ status: 502, body: { ok: false, message: "could not complete the request" } }, { status: 500, body: { message: "Traceback: secret" } }, { reject: true }, { status: 200, body: {} }]) {
+    const p = detailsPage({ features: { keep: true } });
+    withFetch(p.w, leaving({ "POST /LomboShelf/keep": r }));
+    p.w.eval(src("keep-button.js"));
+    await tick(80);
+    p.w.document.querySelector(".lshelf-keep-btn").click();
+    await tick(80);
+    const msg = p.w.document.querySelector(".lshelf-keep-msg").textContent;
+    assert.ok(!/Traceback|secret/.test(msg), msg);
+    assert.match(msg, /could not complete the request/i);
+  }
+});
+
+test("keep: a long message is cut to 200 characters; a rate-limit answer shows its message", async () => {
+  const p = detailsPage({ features: { keep: true } });
+  withFetch(p.w, leaving({ "POST /LomboShelf/keep": { status: 429, body: { ok: false, message: "x".repeat(500) } } }));
+  p.w.eval(src("keep-button.js"));
+  await tick(80);
+  p.w.document.querySelector(".lshelf-keep-btn").click();
+  await tick(80);
+  assert.equal(p.w.document.querySelector(".lshelf-keep-msg").textContent.length, 200);
+});

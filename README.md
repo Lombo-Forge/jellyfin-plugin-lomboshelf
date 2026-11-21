@@ -14,7 +14,7 @@
 A streaming-style Home for Jellyfin's web client: a Resume card, Keep watching, New this week, one row per genre, genre
 chips on the Movies and Shows pages, an optional next-season prompt, and a dark theme whose colours you set.
 
-> **Status: early. It works in one real test, and is not released.** The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 81 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). There is no release or plugin repository yet (see [docs/design.md](docs/design.md)).
+> **Status: early. It works in one real test, and is not released.** The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 166 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). There is no release or plugin repository yet (see [docs/design.md](docs/design.md)).
 
 ## Contents
 
@@ -35,6 +35,8 @@ chips on the Movies and Shows pages, an optional next-season prompt, and a dark 
 | Genre browsing | Chips, sort and "Unwatched only" on Movies and Shows. |
 | Next-season prompt | Off by default. Asks once whether to request the next season, through Seerr via Jellyfin Enhanced. |
 | Header menu | Off by default. Reorder library links, fold some into a drop-down. |
+| Storage tags | Off by default. A small SSD or HDD badge on a title's page, read from the `tiers.json` file LomboTier writes. Administrators only unless you change that. |
+| Keep button | Off by default. "Leaving in N days" and a "Keep it longer" button for titles in the `leaving.json` file LomboFarewell writes; the server makes the keep call, so the browser never holds Farewell's token. |
 | Theme | Dark, with colours as settings. Can be switched off. |
 
 Works in the browser and the phone apps that embed Jellyfin's web client. Jellyfin's native apps ignore it.
@@ -68,6 +70,20 @@ collection exactly; `title` (defaults to the name) and `limit` (1-50, default 16
 empty by default, which means the feature is off. In the plugin's settings page it is a text box with one
 `name | title | limit` line per row.
 
+### Storage tags and keep button
+
+Both read files and an API that other Lombo apps own (the formats are in the Lombo hub repository's `docs/contracts.md`).
+Both are off until you switch them on in the plugin's settings page, which asks for:
+
+- Storage tags: the full path of `tiers.json` as Jellyfin sees it, and the part of a Jellyfin file path to strip (for
+  example `/media/`) so the rest equals the `path` values in that file; "Administrators only" is on by default.
+- Keep button: the full path of `leaving.json`, Farewell's address (`http://host:port`, nothing else) and its token. The
+  token is saved on the server, shown as a password box, never sent back to the settings page (it says whether one is saved;
+  leaving the box empty keeps it) and never put in the page's settings.
+
+The server resolves the folder and makes the keep call. The browser only sends the item id with the signed-in person's own
+token and never sees a file path. The design and its reasons are in [docs/design.md](docs/design.md#storage-tags-and-the-keep-button).
+
 ## What is not verified
 
 What has run in a real Jellyfin (2026-11-21, a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0, driven by headless Chromium from Playwright 1.49.1, with a three-movie library): both plugins load, File Transformation accepts the registration, `index.html` is transformed with the settings and the versioned `loader.js` tag, the asset route and the settings route answer as designed, and the Home page shows the theme, the "New this week" row and a "Leaving soon" collection row (a real BoxSet found by name and its children listed) at 1280 and 390 pixel widths.
@@ -76,12 +92,14 @@ The test is repeatable: `sh test/real-jellyfin/run.sh` builds the plugin, starts
 
 Not run, and so unverified:
 
+- Storage tags and the keep button: the C# routes, the sanitizer and the path rules have unit tests (a fake library, a fake HTTP handler, no network), and both web scripts have jsdom tests. They have **not** run in a real Jellyfin: whether Jellyfin 12.4 accepts the `DefaultAuthorization` policy name on the new routes, the library lookup (`GetItemById`, `IsVisible`) on real items, where the badge and note land on the real details page (the selectors `.itemName`, `.nameContainer` are taken from older jellyfin-web), the settings page's new fields, and a call to a real LomboFarewell. Nothing was run against a real `tiers.json` or `leaving.json` written by the other apps.
+
 - Genre rows, the "Continue watching" and keep-watching rows (the test library had no genres and no watch history), the next-season prompt (needs Jellyfin Enhanced, not installed), the header menu and the settings page's own screen (the routes behind it were called directly, the page was never opened).
 - Real clients: TV layouts and focus, phones and tablets beyond one narrow browser window, other browsers.
 - Loading order when LomboShelf starts before File Transformation (in the test File Transformation loaded first), upgrading and uninstalling, other Jellyfin versions, and a large real library.
 - Installing from a plugin repository: the release zip, its checksum and the manifest entry were never built or fetched.
 - One console error, "Incorrect locale information provided", came from Jellyfin's own `main` bundle in headless Chromium; it was not compared with a run without the plugin.
-- The CSS beyond the Home page was not looked at, and there is no CSS linter. JavaScript is checked with ESLint and 19 jsdom tests (`npm test`).
+- The CSS beyond the Home page was not looked at, and there is no CSS linter. JavaScript is checked with ESLint and 27 jsdom tests (`npm test`).
 
 ## FAQ
 

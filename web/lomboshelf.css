@@ -178,3 +178,14 @@ html.lshelf-browse-on header.MuiAppBar-root button[title="View settings"] { disp
 .layout-tv .lshelf-badge { font-size: 15px; padding: 3px 8px; top: 9px; left: 9px; }
 
 @media (prefers-reduced-motion: reduce) { .cardScalable { transition: none !important; } }
+
+/* Storage tag and keep note on a details page (storage-tag.js, keep-button.js) */
+.lshelf-storage-tag { display: inline-block; margin: 0 .6em .4em 0; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700;
+  letter-spacing: .04em; line-height: 1.4; color: var(--lshelf-text); background: var(--lshelf-surface-2); border: 1px solid rgba(255, 255, 255, .25); }
+.lshelf-storage-tag.ssd { border-color: var(--lshelf-accent); }
+.lshelf-keep-box { display: flex; align-items: center; flex-wrap: wrap; gap: .6em; margin: .4em 0 .8em; }
+.lshelf-keep-note { color: var(--lshelf-text); font-weight: 600; }
+.lshelf-keep-msg { color: var(--lshelf-muted); }
+.lshelf-keep-btn[disabled] { opacity: .6; cursor: default; }
+.layout-tv .lshelf-storage-tag { font-size: 18px; }
+.layout-tv .lshelf-keep-box { font-size: 20px; }
