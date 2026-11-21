@@ -5,7 +5,7 @@
   <a href="https://github.com/Lombo-Forge/jellyfin-plugin-lomboshelf/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Lombo-Forge/jellyfin-plugin-lomboshelf/ci.yml?branch=main&label=CI"></a>
   <a href="https://github.com/Lombo-Forge/jellyfin-plugin-lomboshelf/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Lombo-Forge/jellyfin-plugin-lomboshelf?include_prereleases"></a>
   <img alt="Jellyfin 12.x" src="https://img.shields.io/badge/Jellyfin-12.x-blue">
-  <img alt="Status: skeleton" src="https://img.shields.io/badge/status-skeleton%2C%20unverified-orange">
+  <img alt="Status: early" src="https://img.shields.io/badge/status-early%2C%20one%20real%20test-orange">
   <a href="https://ko-fi.com/datlombardo"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white"></a>
 </p>
 
@@ -14,11 +14,7 @@
 A streaming-style Home for Jellyfin's web client: a Resume card, Keep watching, New this week, one row per genre, genre
 chips on the Movies and Shows pages, an optional next-season prompt, and a dark theme whose colours you set.
 
-> **Status: not a working plugin yet.** The JavaScript and CSS in [`web/`](web) are written and tested against a fake
-> web client (jsdom). A C# plugin skeleton in [`plugin/`](plugin) compiles (`dotnet build -c Release`) and its pure logic has 81 unit tests, but it has never
-> been loaded by a Jellyfin server, its File Transformation hookup is unverified, and there is no release or
-> plugin repository yet (see [docs/design.md](docs/design.md)). Nothing here has been run in a real Jellyfin. Until the plugin exists, the
-> only way to try the web files is the manual route below, on a throwaway server.
+> **Status: early. It works in one real test, and is not released.** The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 81 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). There is no release or plugin repository yet (see [docs/design.md](docs/design.md)).
 
 ## Contents
 
@@ -74,13 +70,18 @@ empty by default, which means the feature is off. In the plugin's settings page 
 
 ## What is not verified
 
-- Nothing has run in a real Jellyfin. The selectors and API calls come from scripts that ran on a Jellyfin 12.4 web client
-  elsewhere; the class names in a real page were not re-checked.
-- The C# plugin in `plugin/` compiles and has unit tests for its pure logic (the `index.html` edit, settings JSON, the file allow-list, settings checks, defaults). The settings page and its JavaScript, the config and asset routes in a running server, the File Transformation hookup (written from its README, never run), the release zip and the manifest template are untested.
-- The CSS was ported and read, not viewed in a browser. TV and phone layouts were not re-checked.
-- The next-season prompt depends on Jellyfin Enhanced's Seerr endpoints, not checked against its current version.
-- Collection rows have only run against a fake `ApiClient` in jsdom. The two Jellyfin queries they use (find a BoxSet by `NameStartsWith`, then list its children by `ParentId`) were written from memory of the API and never sent to a real Jellyfin, so whether a real server returns the expected items, in which order, is unverified. The settings-page text box for them has never been opened.
-- JavaScript is checked with ESLint and 19 jsdom tests (`npm test`); there is no CSS linter.
+What has run in a real Jellyfin (2026-11-21, a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0, driven by headless Chromium from Playwright 1.49.1, with a three-movie library): both plugins load, File Transformation accepts the registration, `index.html` is transformed with the settings and the versioned `loader.js` tag, the asset route and the settings route answer as designed, and the Home page shows the theme, the "New this week" row and a "Leaving soon" collection row (a real BoxSet found by name and its children listed) at 1280 and 390 pixel widths.
+
+The test is repeatable: `sh test/real-jellyfin/run.sh` builds the plugin, starts a throwaway Jellyfin on `127.0.0.1:18096`, installs File Transformation from its GitHub release into that server only, and runs the checks and the browser (needs docker, `gh` and python3; never point it at your own server).
+
+Not run, and so unverified:
+
+- Genre rows, the "Continue watching" and keep-watching rows (the test library had no genres and no watch history), the next-season prompt (needs Jellyfin Enhanced, not installed), the header menu and the settings page's own screen (the routes behind it were called directly, the page was never opened).
+- Real clients: TV layouts and focus, phones and tablets beyond one narrow browser window, other browsers.
+- Loading order when LomboShelf starts before File Transformation (in the test File Transformation loaded first), upgrading and uninstalling, other Jellyfin versions, and a large real library.
+- Installing from a plugin repository: the release zip, its checksum and the manifest entry were never built or fetched.
+- One console error, "Incorrect locale information provided", came from Jellyfin's own `main` bundle in headless Chromium; it was not compared with a run without the plugin.
+- The CSS beyond the Home page was not looked at, and there is no CSS linter. JavaScript is checked with ESLint and 19 jsdom tests (`npm test`).
 
 ## FAQ
 
