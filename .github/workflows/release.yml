@@ -29,7 +29,7 @@ jobs:
           {
             echo "Plugin zip: lomboshelf_*.zip"
             echo
-            echo "Not verified in a real Jellyfin. Paste this into the hub repository's manifest.json:"
+            echo "Paste this into the hub repository's manifest.json:"
             echo
             echo '```'
             sed -n '/^md5:/,$p' package.out
