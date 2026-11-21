@@ -4,6 +4,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -11,6 +15,7 @@ jobs:
   lint:
     # File hygiene and the leak check, from .pre-commit-config.yaml, then ESLint over the web files.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -25,6 +30,7 @@ jobs:
       - run: npx eslint web tests
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -34,12 +40,14 @@ jobs:
       - run: npm test
   leak-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - run: sh scripts/leak-check.sh
   plugin-build:
     # Compiles the C# plugin and runs its unit tests. This proves it builds and the pure logic is right, not that it works in Jellyfin.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
