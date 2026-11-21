@@ -6,6 +6,14 @@ namespace Jellyfin.Plugin.LomboShelf.Configuration;
 /// Settings, saved as XML by Jellyfin. They mirror window.LomboShelfConfig in web/loader.js
 /// (defaults must stay equal to the defaults there). See docs/design.md, Settings.
 /// </summary>
+/// <summary>One collection row: the collection's exact name, an optional row title, and how many items (1-50; 0 = default 16).</summary>
+public class CollectionRow
+{
+    public string Name { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public int Limit { get; set; }
+}
+
 public class PluginConfiguration : BasePluginConfiguration
 {
     // theme
@@ -31,6 +39,9 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool ShelfNewThisWeek { get; set; } = true;
     public bool ShelfGenres { get; set; } = true;
     public int ShelfGenreLimit { get; set; }
+
+    /// <summary>Jellyfin collections shown as Home rows, by exact name. Empty (off) by default; at most 5 (see ConfigSanitizer).</summary>
+    public CollectionRow[] CollectionRows { get; set; } = Array.Empty<CollectionRow>();
 
     // browse
     public string[] BrowseMergeLibraries { get; set; } = Array.Empty<string>();

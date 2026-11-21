@@ -16,7 +16,7 @@
 
 The `web/` folder (JavaScript and CSS) is written and tested against a fake jellyfin-web in jsdom. A **C# plugin
 skeleton** is in `plugin/`: it compiles (`dotnet build -c Release`, .NET SDK 10.0, `Jellyfin.Controller` 12.4.0), the
-web files are embedded in the DLL, and 72 xUnit tests (`dotnet test`) cover the pure logic: the `index.html` edit, the
+web files are embedded in the DLL, and 81 xUnit tests (`dotnet test`) cover the pure logic: the `index.html` edit, the
 settings JSON, the asset allow-list, settings checks and the defaults. That is all that is verified. The plugin has not
 been loaded by a Jellyfin server, the File Transformation hookup is a reflection call written from that plugin's README
 and never run, and the settings page and the two controllers have never been called by a real server. Nothing in this
@@ -26,6 +26,9 @@ repository has been run in a real Jellyfin.
 
 - **Home shelf:** a Resume card ("38 minutes left of Some Show, episode 4"), Keep watching, New this week, and one
   row per genre (filled in as you scroll), above Jellyfin's own Home rows. If anything fails, Jellyfin's rows come back.
+- **Collection rows (off by default):** any Jellyfin collection, by exact name, as a Home row between New this week and the
+  genre rows (for example "Leaving soon" from a separate tool; Shelf does not depend on it). Same look and fail-open
+  behaviour as the other rows.
 - **Genre browsing:** the Movies and Shows pages get genre chips, a sort menu and an "Unwatched only" switch.
   "See all" on a genre row opens them already filtered.
 - **Next-season prompt (off by default):** when someone finishes the last episode of a season in the library and the next
@@ -68,11 +71,23 @@ become `window.LomboShelfConfig`:
   "theme": { "accent": "#e50914", "bg": "#141414", "surface": "#1f1f1f", "text": "#e5e5e5", "muted": "#a3a3a3", "radius": "6px" },
   "features": { "theme": true, "homeShelf": true, "browse": true, "nextSeason": false, "headerNav": false },
   "shelf": { "resume": true, "keepWatching": true, "newThisWeek": true, "genres": true, "genreLimit": 0 },
+  "collectionRows": [{ "name": "Leaving soon", "title": "Going soon", "limit": 20 }],
   "browse": { "mergeLibraries": ["Movies", "4K Movies"] },
   "nextSeason": { "showArt": true },
   "headerNav": { "order": ["Favorites", "Movies", "Shows"], "groups": [{ "label": "Anime", "items": [["Anime", "Shows"]] }], "hide": [] }
 }
 ```
+
+**`collectionRows`** is a list of `{ name, title?, limit? }`, empty by default (feature off). `name` is the collection's exact
+name (case-sensitive, trimmed). `title` is the row heading (default: the name). `limit` is the item count, 1-50, default 16.
+At most 5 rows; the script ignores extra rows, rows without a name and out-of-range limits (clamped), and the plugin's
+settings check rejects them on save (limit 0 means "default"; `IndexTransform` clamps again). Per row the browser asks
+the signed-in user's `ApiClient` for `Users/{id}/Items?IncludeItemTypes=BoxSet&Recursive=true&NameStartsWith=<name>`,
+keeps the result whose `Name` equals the setting exactly (the server match is looser), then lists
+`Users/{id}/Items?ParentId=<collection id>&Limit=<limit>`. A missing collection, an empty one or any error removes
+just that row. Every name, title and item title is escaped by `ui.esc`. In the settings page the rows are a text box, one
+`name | title | limit` line each (C# type `CollectionRow`). **Unverified:** these two queries were never sent to a real
+Jellyfin; the order of items is whatever the server returns for a collection's children.
 
 All keys are optional; missing ones take the defaults in `web/loader.js`. Until the plugin exists you can test by setting
 `window.LomboShelfConfig` yourself before `loader.js`.
@@ -157,6 +172,7 @@ entry); (3) test the settings page, desktop, a phone browser and a TV browser.
 - Everything in a real jellyfin-web. The tests use a fake `ApiClient`, a fake page and a fake `fetch`; they show the scripts
   build the expected DOM, escape titles, respect settings and fail open. They do not show that the class names and page
   structure of a real Jellyfin 12.x match (`#homeTab`, `.homeSectionsContainer`, `header.MuiAppBar-root`, `#moviesPage`).
+- Collection rows: only run against a fake `ApiClient`; the BoxSet lookup and the children query, and the settings-page text box for them, never ran against a real Jellyfin.
 - The CSS was only read, not looked at in a browser after the port; the original's visual checks were not repeated.
 - The TV layout and focus rules (carried over from a version that was checked on real TVs) have not been re-checked.
 - The next-season flow and the Jellyfin Enhanced endpoints it calls were taken from the original and not checked against

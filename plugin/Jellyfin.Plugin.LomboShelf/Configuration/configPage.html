@@ -32,6 +32,8 @@
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ShelfNewThisWeek"><span>New this week</span></label>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ShelfGenres"><span>Genre rows</span></label>
                 <div class="inputContainer"><label class="inputLabel" for="ShelfGenreLimit">Genre row limit (0 = all)</label><input is="emby-input" type="number" id="ShelfGenreLimit" min="0"></div>
+                <h3>Collection rows</h3>
+                <div class="inputContainer"><label class="inputLabel" for="CollectionRowsText">Collections to show as Home rows</label><textarea is="emby-textarea" id="CollectionRowsText" rows="3" class="emby-textarea"></textarea><div class="fieldDescription">One per line: collection name, then optionally a row title and a number of items (1-50), separated by |. For example: Leaving soon | Leaving soon | 20. The name must match the collection exactly. At most 5 rows. Leave empty for none (the default).</div></div>
                 <h3>Other</h3>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="NextSeasonShowArt"><span>Show backdrop art in the next-season dialog</span></label>
                 <div class="inputContainer"><label class="inputLabel" for="BrowseMergeLibraries">Libraries to merge when browsing (comma separated)</label><input is="emby-input" type="text" id="BrowseMergeLibraries"></div>
@@ -53,6 +55,18 @@
             function el(id) { return page.querySelector("#" + id); }
             function split(s) { return s.split(",").map(function (x) { return x.trim(); }).filter(Boolean); }
 
+            function rowsToText(rows) {
+                return (rows || []).map(function (r) {
+                    return [r.Name || "", r.Title || "", r.Limit || ""].join(" | ").replace(/( \| )+$/, "");
+                }).join("\n");
+            }
+            function textToRows(t) {
+                return t.split("\n").map(function (line) {
+                    var p = line.split("|").map(function (x) { return x.trim(); });
+                    return { Name: p[0] || "", Title: p[1] || "", Limit: parseInt(p[2], 10) || 0 };
+                }).filter(function (r) { return r.Name; });
+            }
+
             page.addEventListener("pageshow", function () {
                 Dashboard.showLoadingMsg();
                 ApiClient.ajax({ type: "GET", url: url(), dataType: "json" }).then(function (c) {
@@ -60,6 +74,7 @@
                     bools.forEach(function (k) { el(k).checked = !!c[k]; });
                     lists.forEach(function (k) { el(k).value = (c[k] || []).join(", "); });
                     el("ShelfGenreLimit").value = c.ShelfGenreLimit || 0;
+                    el("CollectionRowsText").value = rowsToText(c.CollectionRows);
                     Dashboard.hideLoadingMsg();
                 }, function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Could not load the LomboShelf settings."); });
             });
@@ -71,6 +86,7 @@
                     bools.forEach(function (k) { c[k] = el(k).checked; });
                     lists.forEach(function (k) { c[k] = split(el(k).value); });
                     c.ShelfGenreLimit = parseInt(el("ShelfGenreLimit").value, 10) || 0;
+                    c.CollectionRows = textToRows(el("CollectionRowsText").value);
                     ApiClient.ajax({ type: "POST", url: url(), data: JSON.stringify(c), contentType: "application/json", dataType: "json" }).then(
                         function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Saved. Reload the web client to see the changes."); },
                         function (r) {

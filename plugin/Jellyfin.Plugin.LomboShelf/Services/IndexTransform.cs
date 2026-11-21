@@ -27,6 +27,25 @@ public static class IndexTransform
                 ["resume"] = c.ShelfResume, ["keepWatching"] = c.ShelfKeepWatching, ["newThisWeek"] = c.ShelfNewThisWeek,
                 ["genres"] = c.ShelfGenres, ["genreLimit"] = c.ShelfGenreLimit
             },
+            // Same limits as the sanitiser, applied again here so a hand-edited XML file cannot send more.
+            ["collectionRows"] = (c.CollectionRows ?? Array.Empty<CollectionRow>())
+                .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Name))
+                .Take(ConfigSanitizer.MaxCollectionRows)
+                .Select(r =>
+                {
+                    var row = new Dictionary<string, object?>
+                    {
+                        ["name"] = r.Name.Trim(),
+                        ["limit"] = r.Limit < 1 ? ConfigSanitizer.DefaultCollectionLimit : Math.Min(r.Limit, ConfigSanitizer.MaxCollectionLimit)
+                    };
+                    if (!string.IsNullOrWhiteSpace(r.Title))
+                    {
+                        row["title"] = r.Title.Trim();
+                    }
+
+                    return row;
+                })
+                .ToArray(),
             ["browse"] = new Dictionary<string, object?> { ["mergeLibraries"] = c.BrowseMergeLibraries },
             ["nextSeason"] = new Dictionary<string, object?> { ["showArt"] = c.NextSeasonShowArt }
         };

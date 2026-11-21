@@ -35,6 +35,8 @@ public static class ConfigSanitizer
         c.HeaderNavOrder = List(c.HeaderNavOrder, "Header menu order", errors);
         c.HeaderNavHide = List(c.HeaderNavHide, "Header menu hidden", errors);
 
+        c.CollectionRows = Rows(c.CollectionRows, errors);
+
         var groups = HeaderNavGroups.TryParse(c.HeaderNavGroupsJson, out var groupError);
         if (groups is null)
         {
@@ -46,6 +48,44 @@ public static class ConfigSanitizer
         }
 
         return errors;
+    }
+
+    public const int MaxCollectionRows = 5;
+    public const int MaxCollectionLimit = 50;
+    public const int DefaultCollectionLimit = 16;
+
+    /// <summary>Trims, drops rows without a name, turns limit 0 into the default; at most 5 rows, limit 1-50.</summary>
+    private static CollectionRow[] Rows(CollectionRow[]? rows, List<string> errors)
+    {
+        var clean = new List<CollectionRow>();
+        foreach (var r in (rows ?? Array.Empty<CollectionRow>()).Where(x => x is not null))
+        {
+            var name = (r.Name ?? string.Empty).Trim();
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            var title = (r.Title ?? string.Empty).Trim();
+            if (name.Length > MaxText || title.Length > MaxText)
+            {
+                errors.Add($"Collection rows: names and titles can have at most {MaxText} characters.");
+            }
+
+            if (r.Limit < 0 || r.Limit > MaxCollectionLimit)
+            {
+                errors.Add($"Collection rows: the limit must be between 1 and {MaxCollectionLimit}.");
+            }
+
+            clean.Add(new CollectionRow { Name = name, Title = title, Limit = r.Limit == 0 ? DefaultCollectionLimit : r.Limit });
+        }
+
+        if (clean.Count > MaxCollectionRows)
+        {
+            errors.Add($"Collection rows: at most {MaxCollectionRows}.");
+        }
+
+        return clean.ToArray();
     }
 
     private static string Color(string? value, string name, List<string> errors)
