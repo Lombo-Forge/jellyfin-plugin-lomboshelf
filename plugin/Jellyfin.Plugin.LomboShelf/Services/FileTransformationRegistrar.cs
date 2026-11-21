@@ -6,15 +6,14 @@ using Jellyfin.Plugin.LomboShelf.Configuration;
 namespace Jellyfin.Plugin.LomboShelf.Services;
 
 /// <summary>
-/// Registers an index.html transformation with the File Transformation plugin by reflection.
-///
-/// UNVERIFIED. The registration steps (find the assembly whose name contains ".FileTransformation" in
-/// AssemblyLoadContext.All, call static Jellyfin.Plugin.FileTransformation.PluginInterface.RegisterTransformation with a
-/// JSON payload {id, fileNamePattern, callbackAssembly, callbackClass, callbackMethod}) come from that plugin's
-/// README. The README does not state the callback signature. The shape used here (static method taking an object with
-/// a "contents" property and returning the new text) is taken from another plugin that uses it, and the payload is
-/// passed as a JObject-like type only if the method asks for one (see BuildArgument). None of this has run
-/// against a real File Transformation or Jellyfin.
+/// Registers an index.html transformation with the File Transformation plugin by reflection: find the assembly whose
+/// name contains ".FileTransformation" in AssemblyLoadContext.All and call the static
+/// Jellyfin.Plugin.FileTransformation.PluginInterface.RegisterTransformation(JObject) with the payload
+/// {id, fileNamePattern, callbackAssembly, callbackClass, callbackMethod}. File Transformation then calls the static
+/// <see cref="Transform"/> with {"contents": "..."} (Newtonsoft matches the property name without regard to case) and
+/// replaces the page with the returned string.
+/// Checked once: the contract above was read in File Transformation 3.0.3.0's source, and the whole path ran in a
+/// throwaway Jellyfin 12.4.0 on 2026-11-21. Not checked: File Transformation loading after this plugin, other versions.
 /// </summary>
 public class FileTransformationRegistrar : IFileTransformationRegistrar
 {
@@ -68,7 +67,7 @@ public class FileTransformationRegistrar : IFileTransformationRegistrar
         }
     }
 
-    // Unverified: the README does not say what type RegisterTransformation takes. Guess: a Newtonsoft JObject
+    // File Transformation 3.0.3.0 takes a Newtonsoft JObject (read in its source); any other parameter type gets the JSON string.
     // (Jellyfin ships Newtonsoft.Json), otherwise the JSON string.
     private static object BuildArgument(MethodInfo method, JsonObject payload)
     {
