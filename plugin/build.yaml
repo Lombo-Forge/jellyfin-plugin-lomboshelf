@@ -1,7 +1,7 @@
 ---
 name: "LomboShelf"
 guid: "6f1c2a54-3b7d-4e0a-9c85-2d41a7e0b913"
-version: "0.1.0.0"
+version: "0.1.1.0"
 targetAbi: "12.4.0.0"
 framework: "net10.0"
 overview: "Streaming-style Home shelf, genre browsing and theme for Jellyfin's web client"
