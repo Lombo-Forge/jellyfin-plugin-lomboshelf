@@ -60,7 +60,7 @@ public class FileTransformationRegistrar : IFileTransformationRegistrar
         try
         {
             var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-            return IndexTransform.Apply(html, IndexTransform.BuildConfigJson(config));
+            return IndexTransform.Apply(html, IndexTransform.BuildConfigJson(config), version: Plugin.Instance?.Version.ToString());
         }
         catch (Exception)
         {

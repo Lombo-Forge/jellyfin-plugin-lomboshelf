@@ -55,6 +55,20 @@ public class IndexTransformTests
     }
 
     [Fact]
+    public void Apply_AddsTheVersionToTheLoaderUrl()
+    {
+        Assert.Contains("src=\"/x/loader.js?v=1.2.3.0\"", IndexTransform.Apply(Page, "{}", "/x/", "1.2.3.0"));
+    }
+
+    [Fact]
+    public void Apply_DropsUnsafeVersionCharacters()
+    {
+        var html = IndexTransform.Apply(Page, "{}", "/x/", "1\"><script>");
+        Assert.Contains("loader.js?v=1script\"", html);
+        Assert.DoesNotContain("\"><script>", html);
+    }
+
+    [Fact]
     public void BuildConfigJson_EscapesSoItCannotCloseTheScriptTag()
     {
         var c = new PluginConfiguration
@@ -105,6 +119,44 @@ public class IndexTransformTests
         var c = new PluginConfiguration { FeatureHeaderNav = true, HeaderNavGroupsJson = "not json" };
         using var doc = JsonDocument.Parse(IndexTransform.BuildConfigJson(c));
         Assert.Equal(0, doc.RootElement.GetProperty("headerNav").GetProperty("groups").GetArrayLength());
+    }
+
+    [Fact]
+    public void BuildConfigJson_EmitsCollectionRows_WithoutAnEmptyTitle_AndEscaped()
+    {
+        var c = new PluginConfiguration
+        {
+            CollectionRows = new[]
+            {
+                new CollectionRow { Name = "Leaving soon", Limit = 20 },
+                new CollectionRow { Name = "</script><b>", Title = "A & B", Limit = 0 }
+            }
+        };
+        var json = IndexTransform.BuildConfigJson(c);
+        Assert.DoesNotContain("<", json);
+        Assert.DoesNotContain(">", json);
+        using var doc = JsonDocument.Parse(json);
+        var rows = doc.RootElement.GetProperty("collectionRows");
+        Assert.Equal(2, rows.GetArrayLength());
+        Assert.Equal("Leaving soon", rows[0].GetProperty("name").GetString());
+        Assert.Equal(20, rows[0].GetProperty("limit").GetInt32());
+        Assert.False(rows[0].TryGetProperty("title", out _));
+        Assert.Equal("</script><b>", rows[1].GetProperty("name").GetString());
+        Assert.Equal("A & B", rows[1].GetProperty("title").GetString());
+        Assert.Equal(16, rows[1].GetProperty("limit").GetInt32());
+    }
+
+    [Fact]
+    public void BuildConfigJson_CapsCollectionRowsEvenWithoutTheSanitiser()
+    {
+        var c = new PluginConfiguration
+        {
+            CollectionRows = Enumerable.Range(1, 9).Select(i => new CollectionRow { Name = "C" + i, Limit = 999 }).ToArray()
+        };
+        using var doc = JsonDocument.Parse(IndexTransform.BuildConfigJson(c));
+        var rows = doc.RootElement.GetProperty("collectionRows");
+        Assert.Equal(5, rows.GetArrayLength());
+        Assert.Equal(50, rows[0].GetProperty("limit").GetInt32());
     }
 
     private static int CountOf(string s, string needle, int before)

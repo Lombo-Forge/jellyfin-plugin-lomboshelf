@@ -15,7 +15,7 @@ A streaming-style Home for Jellyfin's web client: a Resume card, Keep watching, 
 chips on the Movies and Shows pages, an optional next-season prompt, and a dark theme whose colours you set.
 
 > **Status: not a working plugin yet.** The JavaScript and CSS in [`web/`](web) are written and tested against a fake
-> web client (jsdom). A C# plugin skeleton in [`plugin/`](plugin) compiles (`dotnet build -c Release`) and its pure logic has 72 unit tests, but it has never
+> web client (jsdom). A C# plugin skeleton in [`plugin/`](plugin) compiles (`dotnet build -c Release`) and its pure logic has 81 unit tests, but it has never
 > been loaded by a Jellyfin server, its File Transformation hookup is unverified, and there is no release or
 > plugin repository yet (see [docs/design.md](docs/design.md)). Nothing here has been run in a real Jellyfin. Until the plugin exists, the
 > only way to try the web files is the manual route below, on a throwaway server.
@@ -35,6 +35,7 @@ chips on the Movies and Shows pages, an optional next-season prompt, and a dark 
 | Piece | What it does |
 |---|---|
 | Home shelf | Resume, Keep watching, New this week, genre rows. If it fails, Jellyfin's own rows come back. |
+| Collection rows | Off by default. Name up to 5 Jellyfin collections (exact name, optional title and item count) and each becomes a Home row, for example a "Leaving soon" collection kept up to date by another tool. LomboShelf does not need that tool. A missing or empty collection shows nothing. |
 | Genre browsing | Chips, sort and "Unwatched only" on Movies and Shows. |
 | Next-season prompt | Off by default. Asks once whether to request the next season, through Seerr via Jellyfin Enhanced. |
 | Header menu | Off by default. Reorder library links, fold some into a drop-down. |
@@ -66,6 +67,11 @@ This is how it is meant to work once the plugin is built and released; it does n
 
 The keys are listed in [docs/design.md](docs/design.md#settings). All are optional.
 
+Collection rows: `collectionRows: [{ "name": "Leaving soon", "title": "Going soon", "limit": 20 }]`. `name` must match the
+collection exactly; `title` (defaults to the name) and `limit` (1-50, default 16) are optional; at most 5 rows. The list is
+empty by default, which means the feature is off. In the plugin's settings page it is a text box with one
+`name | title | limit` line per row.
+
 ## What is not verified
 
 - Nothing has run in a real Jellyfin. The selectors and API calls come from scripts that ran on a Jellyfin 12.4 web client
@@ -73,7 +79,8 @@ The keys are listed in [docs/design.md](docs/design.md#settings). All are option
 - The C# plugin in `plugin/` compiles and has unit tests for its pure logic (the `index.html` edit, settings JSON, the file allow-list, settings checks, defaults). The settings page and its JavaScript, the config and asset routes in a running server, the File Transformation hookup (written from its README, never run), the release zip and the manifest template are untested.
 - The CSS was ported and read, not viewed in a browser. TV and phone layouts were not re-checked.
 - The next-season prompt depends on Jellyfin Enhanced's Seerr endpoints, not checked against its current version.
-- JavaScript is checked with ESLint and 9 jsdom tests (`npm test`); there is no CSS linter.
+- Collection rows have only run against a fake `ApiClient` in jsdom. The two Jellyfin queries they use (find a BoxSet by `NameStartsWith`, then list its children by `ParentId`) were written from memory of the API and never sent to a real Jellyfin, so whether a real server returns the expected items, in which order, is unverified. The settings-page text box for them has never been opened.
+- JavaScript is checked with ESLint and 19 jsdom tests (`npm test`); there is no CSS linter.
 
 ## FAQ
 

@@ -163,13 +163,29 @@
     }
   }
 
+  // Marking a whole season played pushes one entry per episode: handle them a couple at a time, not all at once.
+  var MAX_PARALLEL = 2;
+  var waiting = [];
+  var running = 0;
+  function enqueue(itemId) {
+    if (inFlight.has(itemId) || waiting.indexOf(itemId) >= 0) return;
+    waiting.push(itemId);
+    pump();
+  }
+  function pump() {
+    while (running < MAX_PARALLEL && waiting.length) {
+      running++;
+      onPlayed(waiting.shift()).then(function () { running--; pump(); }, function () { running--; pump(); });
+    }
+  }
+
   // ------------------------------------------------------------------ hook
   // The server pushes "UserDataChanged" over the web socket when an item is marked played.
   function onMessage(_e, msg) {
     if (!msg || msg.MessageType !== "UserDataChanged") return;
     var data = msg.Data || {};
     if (data.UserId && data.UserId.replace(/-/g, "") !== String(userId()).replace(/-/g, "")) return;
-    (data.UserDataList || []).forEach(function (ud) { if (ud.Played) onPlayed(ud.ItemId); });
+    (data.UserDataList || []).forEach(function (ud) { if (ud.Played) enqueue(ud.ItemId); });
   }
 
   function attach() {

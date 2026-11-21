@@ -203,3 +203,145 @@ test("next season prompt is off by default and asks once when enabled", async ()
   assert.deepEqual(posts[0][1], { mediaType: "tv", mediaId: 42, seasons: [2] });
   assert.match(on.w.document.querySelector(".lshelf-toast").textContent, /Season 2 of Some Show is on its way/);
 });
+
+test("next season prompt handles a burst of played episodes a few at a time", async () => {
+  const on = page({ cfg: { nextSeason: { enabled: true, showArt: false } } });
+  let handler;
+  on.w.ApiClient.subscribe = (_t, fn) => { handler = fn; };
+  let active = 0;
+  let peak = 0;
+  let total = 0;
+  on.w.fetch = async () => {
+    active++; total++;
+    peak = Math.max(peak, active);
+    await tick(15);
+    active--;
+    return { ok: true, status: 200, json: async () => ({ Id: "x", Type: "Movie" }) };   // not an episode: stops after one call
+  };
+  on.w.eval(src("next-season.js"));
+  await tick(1100);
+  const list = Array.from({ length: 12 }, (_, i) => ({ ItemId: "ep" + i, Played: true }));
+  handler({ Data: { UserId: "u1", UserDataList: list } });
+  await tick(300);
+  assert.equal(total, 12, "every item is still handled");
+  assert.ok(peak <= 2, "at most 2 requests at once, saw " + peak);
+});
+
+test("loader adds the plugin version to the files it loads", async () => {
+  const { w } = page({ cfg: { features: { theme: true, homeShelf: false, browse: false, nextSeason: false, headerNav: false } } });
+  Object.defineProperty(w.document, "currentScript", { value: { src: "http://localhost/LomboShelf/web/loader.js?v=1.2.3.0" } });
+  w.eval(src("loader.js"));
+  const hrefs = Array.from(w.document.head.querySelectorAll("link,script")).map((e) => e.href || e.src);
+  assert.ok(hrefs.some((h) => h.endsWith("lomboshelf.css?v=1.2.3.0")), hrefs.join());
+  await tick();
+  assert.ok(Array.from(w.document.head.querySelectorAll("script")).some((e) => e.src.endsWith("ui.js?v=1.2.3.0")));
+});
+
+// ---- collection rows (off by default) ----
+const box = (id, name) => ({ Id: id, Type: "BoxSet", Name: name });
+// Answers the BoxSet search by NameStartsWith (like Jellyfin, a looser match than the exact name) and the children by ParentId.
+function collFx(boxes, children, over = {}) {
+  return fixtures({
+    items: (p) => {
+      if (p.IncludeItemTypes === "BoxSet") return { Items: boxes.filter((b) => b.Name.toLowerCase().startsWith((p.NameStartsWith || "").toLowerCase())) };
+      if (p.ParentId) return { Items: (children[p.ParentId] || []).slice(0, Number(p.Limit)) };
+      return { Items: [movie("g1", p.Genres + " One")], TotalRecordCount: 1 };
+    },
+    ...over,
+  });
+}
+const many = (n) => Array.from({ length: n }, (_, i) => movie("c" + i, "Film " + i));
+const rowTitles = (w) => [...w.document.querySelectorAll("#lshelf-shelf .lshelf-row.collection h2")].map((h) => h.textContent);
+
+test("collection rows: nothing is asked or shown by default", async () => {
+  const { w, calls } = page({ fx: collFx([box("b1", "Leaving soon")], { b1: many(3) }) });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.equal(w.document.querySelector(".lshelf-row.collection"), null);
+  assert.equal(calls.filter((u) => u.includes("BoxSet")).length, 0);
+});
+
+test("collection rows: a named collection renders as a row after New this week, before genres", async () => {
+  const { w, calls } = page({ cfg: { collectionRows: [{ name: "Leaving soon" }, { name: "Staff picks", title: "Picks", limit: 2 }] },
+    fx: collFx([box("b1", "Leaving soon"), box("b2", "Staff picks")], { b1: many(3), b2: many(5) }) });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.deepEqual(rowTitles(w), ["Leaving soon", "Picks"]);
+  const rows = [...w.document.querySelectorAll("#lshelf-shelf .lshelf-row.collection")];
+  assert.equal(rows[0].querySelectorAll(".card").length, 3);
+  assert.equal(rows[1].querySelectorAll(".card").length, 2, "limit 2");
+  const order = [...w.document.querySelectorAll("#lshelf-shelf > section")].map((s) => s.id || s.className);
+  const at = (name) => order.findIndex((c) => c.includes(name));
+  assert.ok(at("lshelf-new") < at("collection") && at("collection") < at("genre"), order.join());
+  assert.ok(calls.some((u) => u.includes("ParentId=b1")), "children are asked by the collection's id");
+});
+
+test("collection rows: the name must match exactly (a longer name is not it) and a missing collection shows nothing", async () => {
+  const { w } = page({ cfg: { collectionRows: [{ name: "Leaving" }, { name: "Nope" }] },
+    fx: collFx([box("b1", "Leaving soon")], { b1: many(3) }) });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.deepEqual(rowTitles(w), []);
+  assert.equal(w.document.querySelectorAll(".lshelf-collslot").length, 0, "empty slots are removed");
+  assert.ok(w.document.querySelector("#lshelf-keep"), "the rest of the shelf is untouched");
+  assert.ok(w.document.documentElement.classList.contains("lshelf-shelf-on"));
+});
+
+test("collection rows: an empty collection shows nothing", async () => {
+  const { w } = page({ cfg: { collectionRows: [{ name: "Leaving soon" }] }, fx: collFx([box("b1", "Leaving soon")], { b1: [] }) });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.deepEqual(rowTitles(w), []);
+  assert.equal(w.document.querySelectorAll(".lshelf-collslot").length, 0);
+});
+
+test("collection rows: an API error fails open for that row only", async () => {
+  const fx = collFx([box("b1", "Leaving soon")], { b1: many(2) });
+  const good = fx.items;
+  fx.items = (p) => { if (p.IncludeItemTypes === "BoxSet") throw new Error("boom"); return good(p); };
+  const { w } = page({ cfg: { collectionRows: [{ name: "Leaving soon" }] }, fx });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.deepEqual(rowTitles(w), []);
+  assert.equal(w.document.querySelectorAll(".lshelf-collslot").length, 0);
+  assert.ok(w.document.querySelector("#lshelf-new"), "other rows still render");
+  assert.ok(w.document.documentElement.classList.contains("lshelf-shelf-on"));
+});
+
+test("collection rows: names, titles and item titles are escaped", async () => {
+  const evil = '<img src=x onerror="alert(1)">';
+  const { w } = page({ cfg: { collectionRows: [{ name: evil, title: '<b id="pwn">T</b>' }] },
+    fx: collFx([box("b1", evil)], { b1: [movie("x", evil)] }) });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.equal(w.document.querySelectorAll("#lshelf-shelf img[src=x]").length, 0);
+  assert.equal(w.document.getElementById("pwn"), null);
+  assert.equal(rowTitles(w)[0], '<b id="pwn">T</b>', "shown as text");
+});
+
+test("collection rows: at most 5 rows, limit 1-50, bad entries ignored", async () => {
+  const names = ["A", "B", "C", "D", "E", "F", "G"];
+  const children = {};
+  names.forEach((n) => { children["id" + n] = many(60); });
+  const lim = { A: 500, B: -3, C: 7 };
+  const cfg = { collectionRows: [...names.map((n) => ({ name: n, limit: lim[n] })), null, { name: "  " }, { title: "x" }] };
+  const { w } = page({ cfg, fx: collFx(names.map((n) => box("id" + n, n)), children) });
+  w.eval(src("home-shelf.js"));
+  await tick(); await tick();
+  assert.deepEqual(rowTitles(w), ["A", "B", "C", "D", "E"]);
+  const count = (i) => w.document.querySelectorAll("#lshelf-shelf .lshelf-row.collection")[i].querySelectorAll(".card").length;
+  assert.equal(count(0), 50, "limit above 50 is capped");
+  assert.equal(count(1), 16, "limit below 1 takes the default");
+  assert.equal(count(2), 7);
+  assert.equal(count(3), 16, "no limit takes the default");
+});
+
+test("collection rows: loader defaults to an empty list and keeps a given list", () => {
+  const a = page();
+  a.w.eval(src("loader.js"));
+  // JSON.stringify: arrays made inside jsdom have another prototype than the ones made here
+  assert.equal(JSON.stringify(a.w.LomboShelfConfig.collectionRows), "[]");
+  const b = page({ cfg: { collectionRows: [{ name: "X" }] } });
+  b.w.eval(src("loader.js"));
+  assert.equal(JSON.stringify(b.w.LomboShelfConfig.collectionRows), '[{"name":"X"}]');
+});

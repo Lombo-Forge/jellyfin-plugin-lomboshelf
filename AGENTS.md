@@ -37,6 +37,7 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 - **Escape everything** that goes into the page (`ui.esc`). Titles are untrusted. Never build CSS or JavaScript from a setting without a strict check (see the theme pattern in `loader.js`).
 - **No outside calls** except the Jellyfin server (the signed-in user's `ApiClient`). The one documented exception is TMDb's backdrop image in the next-season dialog, which a setting turns off.
 - **A new setting** goes in `loader.js` defaults, `docs/design.md` (Settings), `PluginConfiguration`/`IndexTransform` (a C# test compares the defaults with `loader.js`) and a test. Keep classes prefixed `lshelf-` and colours as variables.
+- **Collection rows** (`collectionRows`, in `home-shelf.js`) are generic and off by default: never depend on the tool that fills a collection, never hard-code a collection name, keep the caps (5 rows, limit 1-50) in both `home-shelf.js` and the C# side. Their queries are unverified against a real Jellyfin.
 - **Do not claim it works in a real Jellyfin** until it has been run in one (a throwaway server, never someone's real one). Say what is untested.
 - **Never put private details in the repo:** real hostnames, IPs, keys, local paths. `scripts/leak-check.sh` enforces it.
 - Plain language in docs. Say "streaming-style", never the name of a streaming service. Never imply the Jellyfin project made it.

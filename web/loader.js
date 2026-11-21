@@ -11,10 +11,13 @@
 
   var script = document.currentScript;
   var base = script && script.src ? script.src.replace(/[^/]*$/, "") : "/LomboShelf/web/";
+  // Same ?v=<plugin version> as the loader's own tag, so every file is refetched after an update.
+  var vq = script && script.src ? (script.src.match(/\?v=[A-Za-z0-9._-]+/) || [""])[0] : "";
   var defaults = {
     theme: { bg: "#141414", surface: "#1f1f1f", surface2: "#2a2a2a", text: "#e5e5e5", muted: "#a3a3a3", accent: "#e50914", accentHover: "#f6121d", radius: "6px" },
     features: { theme: true, homeShelf: true, browse: true, nextSeason: false, headerNav: false },
     shelf: { resume: true, keepWatching: true, newThisWeek: true, genres: true, genreLimit: 0 },
+    collectionRows: [],
     browse: { mergeLibraries: [] },
     nextSeason: { showArt: true },
     headerNav: null
@@ -45,13 +48,13 @@
 
   function css(file) {
     var l = document.createElement("link");
-    l.rel = "stylesheet"; l.href = base + file;
+    l.rel = "stylesheet"; l.href = base + file + vq;
     document.head.appendChild(l);
   }
   function js(file) {
     return new Promise(function (resolve) {
       var s = document.createElement("script");
-      s.src = base + file; s.async = false;
+      s.src = base + file + vq; s.async = false;
       s.onload = s.onerror = function () { resolve(); };   // one missing file never blocks the others
       document.head.appendChild(s);
     });
