@@ -17,10 +17,7 @@
 The `web/` folder (JavaScript and CSS) is written and tested against a fake jellyfin-web in jsdom. A **C# plugin
 skeleton** is in `plugin/`: it compiles (`dotnet build -c Release`, .NET SDK 10.0, `Jellyfin.Controller` 12.4.0), the
 web files are embedded in the DLL, and 81 xUnit tests (`dotnet test`) cover the pure logic: the `index.html` edit, the
-settings JSON, the asset allow-list, settings checks and the defaults. That is all that is verified. The plugin has not
-been loaded by a Jellyfin server, the File Transformation hookup is a reflection call written from that plugin's README
-and never run, and the settings page and the two controllers have never been called by a real server. Nothing in this
-repository has been run in a real Jellyfin.
+settings JSON, the asset allow-list, settings checks and the defaults. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else listed under "What is untested" has not run.
 
 ## What the plugin does
 
@@ -135,7 +132,7 @@ plugin/
     Services/ConfigSanitizer.cs         checks and cleans settings before they are saved
     Services/HeaderNavGroups.cs         parses and checks the header-menu groups text
     Services/IFileTransformationRegistrar.cs   the seam behind which the File Transformation call lives
-    Services/FileTransformationRegistrar.cs    reflection call to File Transformation (UNVERIFIED, see below)
+    Services/FileTransformationRegistrar.cs    reflection call to File Transformation (verified once, see below)
     Services/PatchRequestPayload.cs     { "contents": "..." } handed to the callback
     Services/StartupRegistration.cs     IHostedService: registers on start, logs a warning when it cannot
 ```
@@ -172,13 +169,13 @@ entry); (3) test the settings page, desktop, a phone browser and a TV browser.
 - Everything in a real jellyfin-web. The tests use a fake `ApiClient`, a fake page and a fake `fetch`; they show the scripts
   build the expected DOM, escape titles, respect settings and fail open. They do not show that the class names and page
   structure of a real Jellyfin 12.x match (`#homeTab`, `.homeSectionsContainer`, `header.MuiAppBar-root`, `#moviesPage`).
-- Collection rows: only run against a fake `ApiClient`; the BoxSet lookup and the children query, and the settings-page text box for them, never ran against a real Jellyfin.
+- Collection rows: the BoxSet lookup and the children query ran against a real Jellyfin 12.4.0 once (one collection, one title). The settings-page text box for them was never opened, and ordering and limits with a large collection are unchecked.
 - The CSS was only read, not looked at in a browser after the port; the original's visual checks were not repeated.
 - The TV layout and focus rules (carried over from a version that was checked on real TVs) have not been re-checked.
 - The next-season flow and the Jellyfin Enhanced endpoints it calls were taken from the original and not checked against
   that plugin's current version.
-- File Transformation: the registration code in `plugin/` was written from its README and never run; parameter type, callback signature and version support are unconfirmed.
-- The C# plugin has been compiled and its pure logic unit-tested, nothing more. Loading in Jellyfin, the settings page (its JavaScript is not tested at all), the config and asset routes as served by a real server, the manifest and installing from a plugin repository were never run.
+- File Transformation: verified once against 3.0.3.0 on Jellyfin 12.4.0 (its source, `PluginInterface.RegisterTransformation(JObject)`, was read and matches the payload `id, fileNamePattern, callbackAssembly, callbackClass, callbackMethod`; the callback is called with `{contents}` and a returned string replaces the page). Load order the other way round, other versions and upgrades are unverified.
+- Genre rows, "Continue watching", the next-season flow, the header menu and the settings page's screen (only its routes were called), TV layouts and real clients, installing from a plugin repository (zip, checksum, manifest), and any real library were never run.
 - The wordmark's leaning "F" in the banner did not render as leaning in the PNG (the SVG attribute is ignored by the renderer used).
 
 ## What was cut from the original scripts

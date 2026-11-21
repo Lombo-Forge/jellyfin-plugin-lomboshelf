@@ -6,3 +6,6 @@ graphify-out/
 bin/
 obj/
 *.zip
+
+# test/real-jellyfin/run.sh scratch folder
+.scratch-jf/

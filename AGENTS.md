@@ -15,7 +15,7 @@ Notes for an AI coding agent (or a person) working in this repo. `CLAUDE.md` pul
 
 LomboShelf is a Jellyfin web plugin: a streaming-style Home shelf, genre browsing, an optional next-season prompt and a
 theme for jellyfin-web, installed from a plugin repository and injected through the File Transformation plugin.
-`web/` (JavaScript and CSS) is tested in jsdom. `plugin/` is a C# skeleton that **compiles** and has xUnit tests for its pure logic; it was never loaded by Jellyfin, and the File Transformation call and settings page are unverified (`docs/design.md`).
+`web/` (JavaScript and CSS) is tested in jsdom. `plugin/` is a C# skeleton that **compiles** and has xUnit tests for its pure logic; it loaded and injected in one throwaway Jellyfin 12.4.0 test (File Transformation 3.0.3.0); the rest is unverified (`docs/design.md`).
 
 ## Layout
 
@@ -38,7 +38,8 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 - **No outside calls** except the Jellyfin server (the signed-in user's `ApiClient`). The one documented exception is TMDb's backdrop image in the next-season dialog, which a setting turns off.
 - **A new setting** goes in `loader.js` defaults, `docs/design.md` (Settings), `PluginConfiguration`/`IndexTransform` (a C# test compares the defaults with `loader.js`) and a test. Keep classes prefixed `lshelf-` and colours as variables.
 - **Collection rows** (`collectionRows`, in `home-shelf.js`) are generic and off by default: never depend on the tool that fills a collection, never hard-code a collection name, keep the caps (5 rows, limit 1-50) in both `home-shelf.js` and the C# side. Their queries are unverified against a real Jellyfin.
-- **Do not claim it works in a real Jellyfin** until it has been run in one (a throwaway server, never someone's real one). Say what is untested.
+- `sh test/real-jellyfin/run.sh` is the real-Jellyfin check (throwaway server, third-party File Transformation installed there only); run it after any change to the plugin or the injected scripts.
+- **Say exactly what has run in a real Jellyfin** (the one test in `docs/design.md`) and what has not. Test on a throwaway server, never someone's real one.
 - **Never put private details in the repo:** real hostnames, IPs, keys, local paths. `scripts/leak-check.sh` enforces it.
 - Plain language in docs. Say "streaming-style", never the name of a streaming service. Never imply the Jellyfin project made it.
 - The Lombo look (every icon has the Lombo L) is in `docs/branding.md`.
