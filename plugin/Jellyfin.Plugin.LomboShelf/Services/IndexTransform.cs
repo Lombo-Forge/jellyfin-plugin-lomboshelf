@@ -20,7 +20,9 @@ public static class IndexTransform
             ["features"] = new Dictionary<string, object?>
             {
                 ["theme"] = c.FeatureTheme, ["homeShelf"] = c.FeatureHomeShelf, ["browse"] = c.FeatureBrowse,
-                ["nextSeason"] = c.FeatureNextSeason, ["headerNav"] = c.FeatureHeaderNav
+                ["nextSeason"] = c.FeatureNextSeason, ["headerNav"] = c.FeatureHeaderNav,
+                // Only the two switches go to the browser; paths, the address and the token stay on the server.
+                ["storageTags"] = FeatureGate.StorageTags(c), ["keep"] = FeatureGate.Keep(c)
             },
             ["shelf"] = new Dictionary<string, object?>
             {

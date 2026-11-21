@@ -34,6 +34,19 @@
                 <div class="inputContainer"><label class="inputLabel" for="ShelfGenreLimit">Genre row limit (0 = all)</label><input is="emby-input" type="number" id="ShelfGenreLimit" min="0"></div>
                 <h3>Collection rows</h3>
                 <div class="inputContainer"><label class="inputLabel" for="CollectionRowsText">Collections to show as Home rows</label><textarea is="emby-textarea" id="CollectionRowsText" rows="3" class="emby-textarea"></textarea><div class="fieldDescription">One per line: collection name, then optionally a row title and a number of items (1-50), separated by |. For example: Leaving soon | Leaving soon | 20. The name must match the collection exactly. At most 5 rows. Leave empty for none (the default).</div></div>
+                <h3>Storage tags (optional, off by default)</h3>
+                <p class="fieldDescription">Shows an SSD or HDD badge on a title's page, read from the tiers.json file that LomboTier writes. The server looks the folder up; the browser never sees a path. The shared file formats are described in the Lombo hub repository's docs/contracts.md.</p>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="StorageTagsEnabled"><span>Show storage tags</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="StorageTagsAdminsOnly"><span>Administrators only</span></label>
+                <div class="inputContainer"><label class="inputLabel" for="TiersFile">tiers.json (full path, as Jellyfin sees it)</label><input is="emby-input" type="text" id="TiersFile"></div>
+                <div class="inputContainer"><label class="inputLabel" for="TiersPathPrefix">Path prefix to remove (for example /media/)</label><input is="emby-input" type="text" id="TiersPathPrefix"><div class="fieldDescription">Removed from the start of a title's file path in Jellyfin, so what is left matches the "path" in tiers.json.</div></div>
+                <h3>Keep button (optional, off by default)</h3>
+                <p class="fieldDescription">Shows "Leaving in N days" and a "Keep it longer" button for titles listed in the leaving.json file that LomboFarewell writes. Pressing the button makes this server call Farewell; the token below is kept on the server and is never sent to a browser.</p>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="KeepEnabled"><span>Show the leaving note and keep button</span></label>
+                <div class="inputContainer"><label class="inputLabel" for="LeavingFile">leaving.json (full path, as Jellyfin sees it)</label><input is="emby-input" type="text" id="LeavingFile"></div>
+                <div class="inputContainer"><label class="inputLabel" for="FarewellUrl">Farewell address (http:// or https://, host and port only)</label><input is="emby-input" type="text" id="FarewellUrl"></div>
+                <div class="inputContainer"><label class="inputLabel" for="FarewellToken">Farewell token</label><input is="emby-input" type="password" id="FarewellToken" autocomplete="new-password"><div class="fieldDescription" id="FarewellTokenState"></div></div>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ClearFarewellToken"><span>Remove the saved token</span></label>
                 <h3>Other</h3>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="NextSeasonShowArt"><span>Show backdrop art in the next-season dialog</span></label>
                 <div class="inputContainer"><label class="inputLabel" for="BrowseMergeLibraries">Libraries to merge when browsing (comma separated)</label><input is="emby-input" type="text" id="BrowseMergeLibraries"></div>
@@ -46,10 +59,11 @@
     </div>
     <script type="text/javascript">
         (function () {
-            var texts = ["Accent", "AccentHover", "Bg", "Surface", "Surface2", "Text", "Muted", "Radius", "HeaderNavGroupsJson"];
+            var texts = ["Accent", "AccentHover", "Bg", "Surface", "Surface2", "Text", "Muted", "Radius", "HeaderNavGroupsJson", "TiersFile", "TiersPathPrefix", "LeavingFile", "FarewellUrl"];
             var url = function () { return ApiClient.getUrl("LomboShelf/config"); };
             var bools = ["FeatureTheme", "FeatureHomeShelf", "FeatureBrowse", "FeatureNextSeason", "FeatureHeaderNav",
-                "ShelfResume", "ShelfKeepWatching", "ShelfNewThisWeek", "ShelfGenres", "NextSeasonShowArt"];
+                "ShelfResume", "ShelfKeepWatching", "ShelfNewThisWeek", "ShelfGenres", "NextSeasonShowArt",
+                "StorageTagsEnabled", "StorageTagsAdminsOnly", "KeepEnabled"];
             var lists = ["BrowseMergeLibraries", "HeaderNavOrder", "HeaderNavHide"];
             var page = document.querySelector("#LomboShelfConfigPage");
             function el(id) { return page.querySelector("#" + id); }
@@ -74,6 +88,10 @@
                     bools.forEach(function (k) { el(k).checked = !!c[k]; });
                     lists.forEach(function (k) { el(k).value = (c[k] || []).join(", "); });
                     el("ShelfGenreLimit").value = c.ShelfGenreLimit || 0;
+                    // The server never sends the token: the box stays empty and only says whether one is saved.
+                    el("FarewellToken").value = "";
+                    el("ClearFarewellToken").checked = false;
+                    el("FarewellTokenState").textContent = c.FarewellTokenSet ? "A token is saved. Leave this empty to keep it." : "No token saved.";
                     el("CollectionRowsText").value = rowsToText(c.CollectionRows);
                     Dashboard.hideLoadingMsg();
                 }, function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Could not load the LomboShelf settings."); });
@@ -86,9 +104,11 @@
                     bools.forEach(function (k) { c[k] = el(k).checked; });
                     lists.forEach(function (k) { c[k] = split(el(k).value); });
                     c.ShelfGenreLimit = parseInt(el("ShelfGenreLimit").value, 10) || 0;
+                    c.FarewellToken = el("FarewellToken").value;
+                    c.ClearFarewellToken = el("ClearFarewellToken").checked;
                     c.CollectionRows = textToRows(el("CollectionRowsText").value);
                     ApiClient.ajax({ type: "POST", url: url(), data: JSON.stringify(c), contentType: "application/json", dataType: "json" }).then(
-                        function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Saved. Reload the web client to see the changes."); },
+                        function () { el("FarewellToken").value = ""; Dashboard.hideLoadingMsg(); Dashboard.alert("Saved. Reload the web client to see the changes."); },
                         function (r) {
                             Dashboard.hideLoadingMsg();
                             var show = function (b) { Dashboard.alert((b && b.errors ? b.errors : ["Could not save the settings."]).join("\n")); };

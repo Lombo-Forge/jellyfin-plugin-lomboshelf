@@ -1,3 +1,4 @@
+using System.Xml.Serialization;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.LomboShelf.Configuration;
@@ -55,4 +56,34 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Groups as JSON, e.g. [{"label":"Anime","items":[["Anime","Shows"]]}]. Checked on save; invalid text sends no groups.</summary>
     public string HeaderNavGroupsJson { get; set; } = "[]";
+
+    // storage tags (off by default; reads Tier's tiers.json on the server, see docs/design.md)
+    public bool StorageTagsEnabled { get; set; }
+    public bool StorageTagsAdminsOnly { get; set; } = true;
+
+    /// <summary>Absolute path of tiers.json as the Jellyfin process sees it.</summary>
+    public string TiersFile { get; set; } = string.Empty;
+
+    /// <summary>The part of a Jellyfin item path to strip so the rest equals the "path" in tiers.json, for example /media/.</summary>
+    public string TiersPathPrefix { get; set; } = string.Empty;
+
+    // keep button (off by default; reads Farewell's leaving.json and calls its keep route from the server)
+    public bool KeepEnabled { get; set; }
+
+    /// <summary>Absolute path of leaving.json as the Jellyfin process sees it.</summary>
+    public string LeavingFile { get; set; } = string.Empty;
+
+    /// <summary>http or https, host and port only.</summary>
+    public string FarewellUrl { get; set; } = string.Empty;
+
+    /// <summary>SECRET. Saved in the plugin's XML file, never sent to a browser: GET /LomboShelf/config returns it blank.</summary>
+    public string FarewellToken { get; set; } = string.Empty;
+
+    /// <summary>Only in answers to the settings page: true when a token is stored. Not saved.</summary>
+    [XmlIgnore]
+    public bool FarewellTokenSet { get; set; }
+
+    /// <summary>Only in a save request: true clears the stored token (a blank token alone keeps it). Not saved.</summary>
+    [XmlIgnore]
+    public bool ClearFarewellToken { get; set; }
 }

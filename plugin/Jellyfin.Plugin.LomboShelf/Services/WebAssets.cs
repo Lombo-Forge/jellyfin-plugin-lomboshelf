@@ -11,6 +11,8 @@ public static class WebAssets
         ["browse-genres.js"] = "text/javascript",
         ["next-season.js"] = "text/javascript",
         ["header-nav.js"] = "text/javascript",
+        ["storage-tag.js"] = "text/javascript",
+        ["keep-button.js"] = "text/javascript",
         ["lomboshelf.css"] = "text/css"
     };
 

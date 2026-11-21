@@ -10,6 +10,11 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<IFileTransformationRegistrar, FileTransformationRegistrar>();
+        serviceCollection.AddSingleton<IConfigSource, PluginConfigSource>();
+        serviceCollection.AddSingleton<IItemAccess, JellyfinItemAccess>();
+        serviceCollection.AddSingleton<ContractReader>();
+        serviceCollection.AddSingleton<KeepGuard>();
+        serviceCollection.AddSingleton<IFarewellClient, FarewellClient>();
         serviceCollection.AddHostedService<StartupRegistration>();
     }
 }

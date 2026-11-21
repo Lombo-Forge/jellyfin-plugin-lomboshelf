@@ -15,7 +15,7 @@ public class ConfigController : ControllerBase
     public ActionResult<PluginConfiguration> Get()
     {
         var plugin = Plugin.Instance;
-        return plugin is null ? NotFound() : plugin.Configuration;
+        return plugin is null ? NotFound() : ConfigSanitizer.Redacted(plugin.Configuration);
     }
 
     [HttpPost]
@@ -27,6 +27,10 @@ public class ConfigController : ControllerBase
             return NotFound();
         }
 
+        // A blank token keeps the stored one; ClearFarewellToken clears it. Merged before the checks so "enabled needs a token" sees it.
+        config.FarewellToken = ConfigSanitizer.MergeToken(config, plugin.Configuration.FarewellToken);
+        config.ClearFarewellToken = false;
+        config.FarewellTokenSet = false;
         var errors = ConfigSanitizer.Sanitize(config);
         if (errors.Count > 0)
         {
@@ -34,6 +38,6 @@ public class ConfigController : ControllerBase
         }
 
         plugin.UpdateConfiguration(config);
-        return Ok(config);
+        return Ok(ConfigSanitizer.Redacted(config));
     }
 }

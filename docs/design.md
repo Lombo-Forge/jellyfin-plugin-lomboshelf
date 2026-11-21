@@ -6,6 +6,7 @@
 - [What the plugin does](#what-the-plugin-does)
 - [How the files get into jellyfin-web](#how-the-files-get-into-jellyfin-web)
 - [Settings](#settings)
+- [Storage tags and the keep button](#storage-tags-and-the-keep-button)
 - [The web files](#the-web-files)
 - [Supported Jellyfin versions](#supported-jellyfin-versions)
 - [The C# skeleton plan](#the-c-skeleton-plan)
@@ -16,7 +17,7 @@
 
 The `web/` folder (JavaScript and CSS) is written and tested against a fake jellyfin-web in jsdom. A **C# plugin
 skeleton** is in `plugin/`: it compiles (`dotnet build -c Release`, .NET SDK 10.0, `Jellyfin.Controller` 12.4.0), the
-web files are embedded in the DLL, and 81 xUnit tests (`dotnet test`) cover the pure logic: the `index.html` edit, the
+web files are embedded in the DLL, and 166 xUnit tests (`dotnet test`) cover the pure logic: the `index.html` edit, the
 settings JSON, the asset allow-list, settings checks and the defaults. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else listed under "What is untested" has not run.
 
 ## What the plugin does
@@ -66,7 +67,7 @@ become `window.LomboShelfConfig`:
 ```json
 {
   "theme": { "accent": "#e50914", "bg": "#141414", "surface": "#1f1f1f", "text": "#e5e5e5", "muted": "#a3a3a3", "radius": "6px" },
-  "features": { "theme": true, "homeShelf": true, "browse": true, "nextSeason": false, "headerNav": false },
+  "features": { "theme": true, "homeShelf": true, "browse": true, "nextSeason": false, "headerNav": false, "storageTags": false, "keep": false },
   "shelf": { "resume": true, "keepWatching": true, "newThisWeek": true, "genres": true, "genreLimit": 0 },
   "collectionRows": [{ "name": "Leaving soon", "title": "Going soon", "limit": 20 }],
   "browse": { "mergeLibraries": ["Movies", "4K Movies"] },
@@ -89,6 +90,81 @@ Jellyfin; the order of items is whatever the server returns for a collection's c
 All keys are optional; missing ones take the defaults in `web/loader.js`. Until the plugin exists you can test by setting
 `window.LomboShelfConfig` yourself before `loader.js`.
 
+## Storage tags and the keep button
+
+Two optional features, both **off by default**, that read what the other Lombo apps write. The file formats are the
+other apps' promises and live in the Lombo hub repository's `docs/contracts.md` (LomboTier's `tiers.json`, LomboFarewell's
+`leaving.json` and keep call). This page only says how Shelf uses them.
+
+**Settings** (`PluginConfiguration`, checked by `ConfigSanitizer`):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `StorageTagsEnabled` | false | Turns the SSD / HDD badge on. |
+| `StorageTagsAdminsOnly` | true | Only administrators get a tier; everyone else gets 204. |
+| `TiersFile` | empty | Absolute path of `tiers.json` as the Jellyfin process sees it. |
+| `TiersPathPrefix` | empty | The part of a Jellyfin item path to strip so the rest equals a `path` in `tiers.json`, for example `/media/`. No `..`. |
+| `KeepEnabled` | false | Turns the leaving note and keep button on. |
+| `LeavingFile` | empty | Absolute path of `leaving.json` as Jellyfin sees it. |
+| `FarewellUrl` | empty | `http` or `https`, host and port only (no user info, path, query or fragment). Saved as `scheme://host[:port]`. |
+| `FarewellToken` | empty | **Secret.** At most 256 visible characters, no spaces or control characters. |
+
+The save check answers 400 with the list of problems for: a bad URL, a relative or `..` file path, a prefix with `..`, a bad
+or over-long token, and a feature switched on without what it needs (storage tags need `TiersFile`; keep needs
+`LeavingFile`, `FarewellUrl` and the token). Only two booleans reach the browser, `features.storageTags` and `features.keep`
+(each true only when the feature is on **and** its required settings are present): no path, address or token is ever in
+`window.LomboShelfConfig` or `index.html`.
+
+**The token.** `GET /LomboShelf/config` returns it blank plus `FarewellTokenSet` (true when one is stored). A `POST` with a
+blank token keeps the stored one; `ClearFarewellToken: true` clears it. Both extra fields are not saved in the XML. It is
+never logged and appears in no response. The settings page shows a password input that is always empty.
+It is stored in the plugin's XML file, like every plugin setting, so anyone who can read Jellyfin's config folder can read it.
+
+**Routes** (new controller; any signed-in user, not admin-only; every answer is JSON with `Cache-Control: no-store`; each
+answers 404 when its feature is off; ids are 32 hex characters, Jellyfin's dashed form is accepted):
+
+| Route | Answer |
+|---|---|
+| `GET /LomboShelf/storage/{itemId}` | `200 {"tier":"ssd"\|"hdd"}`, or `204` for: unknown item, item not visible to this user, not a Movie, Season or Episode, no matching unit, unreadable file, wrong file version, or (admins-only on) a caller who is not an administrator. |
+| `GET /LomboShelf/leaving/{itemId}` | `200 {"days_left": number\|null, "can_keep": bool}` when the id is in `leaving.json` and the user can see the item, else `204`. |
+| `POST /LomboShelf/keep` | Body exactly `{"itemId":"<id>"}` (1 KB at most, no other keys). `200 {"ok":true,"message":...}`, `422 {"ok":false,"message":...}`, `400` bad body, `429` with `Retry-After`, `502 {"ok":false,"message":"could not complete the request"}`. |
+
+*Storage resolution.* The server looks the item up with Jellyfin's library, checks the caller may see it, takes its file path
+(a season's own folder), strips `TiersPathPrefix` (the path must start with it, at a folder boundary), normalises it
+(`/`, no empty parts, any `..` means no match) and finds the longest `tiers.json` unit whose `path` equals that path or is a
+parent folder of it. So a movie matches its folder and an episode matches its season folder. A path is never returned.
+
+*Keep.* The server checks: the feature is on, the id is well formed, the caller may see the item, and the id is in
+`leaving.json` with `can_keep` true (every failure of the last two answers the same 422, so a person learns nothing about
+titles they cannot see). Then it calls `FarewellUrl/v1/keep` with `Authorization: Bearer <token>`, `Content-Type:
+application/json` and the body `{"title":"<32 hex id>"}`: 10 second timeout, redirects not followed, the answer read up to 64 KB.
+Farewell 200 becomes 200 and Farewell 422 becomes 422 (its message cut to 200 printable characters); anything else, a timeout
+or an exception becomes 502 with a fixed message, and the log line has no address, token or detail. One keep per person per 10
+seconds (429 with `Retry-After`) and one keep in flight at a time (429, retry in 2 seconds).
+
+*Reading the files.* Only the configured path is opened. At most 4 MB; the file must be JSON with `"version": 1` (any other
+version means "no data", as the contracts say); the parsed result is cached by last-write time and size; any problem
+(missing, unreadable, too big, bad JSON) gives no data and never an exception. A symbolic link at the configured path is
+followed by the operating system as usual: point the setting at the real file.
+
+**Why the server does this.** The browser must never hold the Farewell token (anyone who opens the page could read it and
+call Farewell directly, with no per-person rule) and must never learn where files live. So the plugin holds the token and
+makes the call, turns a folder into just "ssd" or "hdd", and repeats the visibility check Jellyfin itself would do for the
+person. The routes use Jellyfin's token header, not cookies, so a page on another site cannot call them on someone's behalf.
+What still holds: anyone who can sign in and see a keepable title can press keep (Farewell's own rules limit how often a
+title can be kept), and Farewell does not know who pressed it.
+
+**The two scripts.** On an item details page (`#/details?id=...`, once per page view, the signed-in person's own token):
+
+- `storage-tag.js` asks `GET /LomboShelf/storage/{id}` and, on 200 with `ssd` or `hdd`, adds a small badge after the title. Nothing
+  on 204 or on any error.
+- `keep-button.js` asks `GET /LomboShelf/leaving/{id}`. On 200 it shows "Leaving in N days" ("Leaving soon" when null,
+  "Leaving today" at 0) and, when `can_keep`, a "Keep it longer" button. The button posts the id, disables itself while waiting,
+  shows the returned message (as text, cut to 200 characters; a failure shows only "Could not complete the request.") and
+  asks again.
+
+`ui.js` gained `own()` (the signed-in user's own call to a plugin route), `detailsId()` and `titleAnchor()` for these two.
+
 ## The web files
 
 | File | What |
@@ -99,6 +175,8 @@ All keys are optional; missing ones take the defaults in `web/loader.js`. Until 
 | `web/browse-genres.js` | Genre chips, sort and unwatched switch on Movies and Shows. Fail-open. |
 | `web/next-season.js` | The next-season dialog. Needs Jellyfin Enhanced. |
 | `web/header-nav.js` | Header order and groups. Does nothing without `headerNav` settings. |
+| `web/storage-tag.js` | SSD / HDD badge on a details page. Off unless `features.storageTags`. Fail-open. |
+| `web/keep-button.js` | "Leaving in N days" note and "Keep it longer" button. Off unless `features.keep`. Fail-open. |
 | `web/lomboshelf.css` | Theme and layout. Colours are `--lshelf-*` variables. |
 
 Scripts only use the signed-in user's own `ApiClient` (their token and permissions), escape every title before it goes
@@ -126,7 +204,12 @@ plugin/
     Configuration/PluginConfiguration.cs  the settings as properties (defaults equal web/loader.js)
     Configuration/configPage.html       settings form (embedded), ApiClient.getPluginConfiguration / updatePluginConfiguration
     Api/WebAssetsController.cs          GET /LomboShelf/web/{file}: embedded files, allow-list, anonymous
-    Api/ConfigController.cs             GET/POST /LomboShelf/config: settings for the settings page, admin only, checked on save
+    Api/ConfigController.cs             GET/POST /LomboShelf/config: settings for the settings page, admin only, checked on save; the token is never returned
+    Api/IntegrationController.cs        storage, leaving and keep routes (signed-in users), see Storage tags and the keep button
+    Services/ContractFiles.cs           reads tiers.json / leaving.json (size, version, cache); StorageResolver; id normalising
+    Services/Keep.cs                    FarewellClient (the one outbound call), KeepGuard (cooldown, one in flight)
+    Services/ItemAccess.cs              the seam in front of Jellyfin's library and users
+    Services/FeatureGate.cs             "feature is on" in one place
     Services/IndexTransform.cs          pure: settings -> window.LomboShelfConfig JSON; html -> html with both script tags
     Services/WebAssets.cs               the allow-list of served files (exact match, so no path can get through)
     Services/ConfigSanitizer.cs         checks and cleans settings before they are saved
@@ -139,7 +222,7 @@ plugin/
 
 The xUnit tests check: the script tags go before `</body>` (any case; appended when there is none) and a second pass
 changes nothing; the settings JSON cannot close the script tag (`<`, `>`, `&` are escaped) and still reads back to the
-original text; bad header-menu groups fall back to an empty list; only the seven listed files are served and
+original text; bad header-menu groups fall back to an empty list; only the nine listed files are served and
 `..`, slashes, encoded dots, other case, empty and `null` names get a 404 (the controller is called directly); the list
 equals the files in `web/` and the embedded resources; and the default settings produce exactly the defaults written in
 `web/loader.js` (the test reads that file). They do not run Jellyfin, the settings page's JavaScript, authorization on
@@ -175,6 +258,7 @@ entry); (3) test the settings page, desktop, a phone browser and a TV browser.
 - The next-season flow and the Jellyfin Enhanced endpoints it calls were taken from the original and not checked against
   that plugin's current version.
 - File Transformation: verified once against 3.0.3.0 on Jellyfin 12.4.0 (its source, `PluginInterface.RegisterTransformation(JObject)`, was read and matches the payload `id, fileNamePattern, callbackAssembly, callbackClass, callbackMethod`; the callback is called with `{contents}` and a returned string replaces the page). Load order the other way round, other versions and upgrades are unverified.
+- Storage tags and the keep button: unit tests (a fake library and a fake HTTP handler, no network) and jsdom tests only. Not run in a real Jellyfin: the `DefaultAuthorization` policy name, the library lookup on real items, the badge position on the real details page, the new settings fields on the real page and a call to a real Farewell. Never run against files written by the real Tier and Farewell.
 - Genre rows, "Continue watching", the next-season flow, the header menu and the settings page's screen (only its routes were called), TV layouts and real clients, installing from a plugin repository (zip, checksum, manifest), and any real library were never run.
 - The wordmark's leaning "F" in the banner did not render as leaning in the PNG (the SVG attribute is ignored by the renderer used).
 
