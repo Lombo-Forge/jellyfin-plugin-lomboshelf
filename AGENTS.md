@@ -23,12 +23,14 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 |---|---|
 | `web/loader.js` | The one script the plugin adds to index.html: settings, theme variables, loads the rest. |
 | `web/ui.js` | Shared helpers (`window.__lomboShelfUI`). |
-| `web/home-shelf.js`, `browse-genres.js`, `next-season.js`, `header-nav.js`, `storage-tag.js`, `keep-button.js` | The features. The last two are off by default and talk to the plugin's own routes (`plugin/.../Api/IntegrationController.cs`); the token and file paths stay on the server. |
+| `web/home-shelf.js`, `browse-genres.js`, `next-season.js`, `header-nav.js`, `storage-tag.js`, `keep-button.js`, `travel-button.js` | The features. The last three are off by default and talk to the plugin's own routes (`plugin/.../Api/IntegrationController.cs`); the tokens and file paths stay on the server. |
 | `web/lomboshelf.css` | Theme and layout; colours are `--lshelf-*` variables. |
 | `plugin/` | C# plugin skeleton (`Jellyfin.Plugin.LomboShelf/`, its xUnit project `Jellyfin.Plugin.LomboShelf.Tests/`, `build.yaml`, `manifest.json` template). Embeds `web/`. |
 | `scripts/package-plugin.sh` | Builds the plugin zip, prints its md5 and the manifest entry (the release workflow runs it). |
 | `tests/web.test.mjs` | jsdom tests with a fake `ApiClient` and `fetch` (`npm test`). |
 | `docs/design.md` | How files are injected, settings, versions, the C# plan, what is untested. |
+| `docs/security.md` | What the token-holding features (keep, travel) trust, refuse and never log. Update it with any change to them. |
+| `test/real-jellyfin/` | The real-Jellyfin harness: `run.sh`, `wizard.py`, `check.py` (routes, features, secrets), `stubs.py` (fake Farewell and Visa), `browser.py`. |
 | `scripts/leak-check.sh` | Fails when private or personal strings appear. CI runs it. |
 
 ## Rules
@@ -39,6 +41,7 @@ theme for jellyfin-web, installed from a plugin repository and injected through 
 - **A new setting** goes in `loader.js` defaults, `docs/design.md` (Settings), `PluginConfiguration`/`IndexTransform` (a C# test compares the defaults with `loader.js`) and a test. Keep classes prefixed `lshelf-` and colours as variables.
 - **Collection rows** (`collectionRows`, in `home-shelf.js`) are generic and off by default: never depend on the tool that fills a collection, never hard-code a collection name, keep the caps (5 rows, limit 1-50) in both `home-shelf.js` and the C# side. Their queries are unverified against a real Jellyfin.
 - `sh test/real-jellyfin/run.sh` is the real-Jellyfin check (throwaway server, third-party File Transformation installed there only); run it after any change to the plugin or the injected scripts.
+- **Not verified in a real Jellyfin (honest list):** where the badge, the note and the Travelling card land on the real pages, the new settings fields in a browser, and any call to a real Farewell, Visa or Tier. The server routes were proven on 2026-11-21 by `test/real-jellyfin/run.sh` (95 checks, fake Farewell and Visa). Keep this list in step with the README's "What is not verified".
 - **Say exactly what has run in a real Jellyfin** (the one test in `docs/design.md`) and what has not. Test on a throwaway server, never someone's real one.
 - **Never put private details in the repo:** real hostnames, IPs, keys, local paths. `scripts/leak-check.sh` enforces it.
 - Plain language in docs. Say "streaming-style", never the name of a streaming service. Never imply the Jellyfin project made it.

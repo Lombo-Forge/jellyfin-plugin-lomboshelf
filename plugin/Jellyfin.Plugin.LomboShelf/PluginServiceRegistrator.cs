@@ -15,6 +15,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ContractReader>();
         serviceCollection.AddSingleton<KeepGuard>();
         serviceCollection.AddSingleton<IFarewellClient, FarewellClient>();
+        serviceCollection.AddSingleton<TravelGuard>();
+        serviceCollection.AddSingleton<IVisaClient, VisaClient>();
         serviceCollection.AddHostedService<StartupRegistration>();
     }
 }

@@ -7,6 +7,7 @@
 - [How the files get into jellyfin-web](#how-the-files-get-into-jellyfin-web)
 - [Settings](#settings)
 - [Storage tags and the keep button](#storage-tags-and-the-keep-button)
+- [The travel card](#the-travel-card)
 - [The web files](#the-web-files)
 - [Supported Jellyfin versions](#supported-jellyfin-versions)
 - [The C# skeleton plan](#the-c-skeleton-plan)
@@ -67,7 +68,7 @@ become `window.LomboShelfConfig`:
 ```json
 {
   "theme": { "accent": "#e50914", "bg": "#141414", "surface": "#1f1f1f", "text": "#e5e5e5", "muted": "#a3a3a3", "radius": "6px" },
-  "features": { "theme": true, "homeShelf": true, "browse": true, "nextSeason": false, "headerNav": false, "storageTags": false, "keep": false },
+  "features": { "theme": true, "homeShelf": true, "browse": true, "nextSeason": false, "headerNav": false, "storageTags": false, "keep": false, "travel": false },
   "shelf": { "resume": true, "keepWatching": true, "newThisWeek": true, "genres": true, "genreLimit": 0 },
   "collectionRows": [{ "name": "Leaving soon", "title": "Going soon", "limit": 20 }],
   "browse": { "mergeLibraries": ["Movies", "4K Movies"] },
@@ -165,6 +166,46 @@ title can be kept), and Farewell does not know who pressed it.
 
 `ui.js` gained `own()` (the signed-in user's own call to a plugin route), `detailsId()` and `titleAnchor()` for these two.
 
+## The travel card
+
+A third optional feature, **off by default**: a small collapsed "Travelling?" card on Home where a signed-in person can
+allow sign-in from abroad for themselves, through LomboVisa's self-service API (the shared promise is in the Lombo hub
+repository's `docs/contracts.md`). It has the same shape as the keep button: the server holds Visa's address and token, the
+browser never sees them. The security notes are in [security.md](security.md).
+
+**Settings:**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `TravelEnabled` | false | Turns the card and its routes on. |
+| `VisaUrl` | empty | `http` or `https`, host and port only, saved as `scheme://host[:port]` (same rule as `FarewellUrl`). |
+| `VisaToken` | empty | **Secret**, same rules and handling as `FarewellToken`: at most 256 visible characters; returned blank with `VisaTokenSet`; a blank save keeps it; `ClearVisaToken: true` clears it; neither extra field is saved in the XML. |
+
+A save with travel on and no address or token is refused (400). `features.travel` is the only travel value that reaches the
+browser, true only when the feature is on **and** both settings are present.
+
+**Routes** (any signed-in user; `Cache-Control: no-store`; 404 when off, 401 without a verified user id):
+
+| Route | Answer |
+|---|---|
+| `GET /LomboShelf/travel` | `200 {"active": {"ends": <unix seconds>}\|null, "next_allowed": <unix seconds>\|null, "max_days": n}`, or `502` (fixed text) when Visa does not answer in exactly that shape. |
+| `POST /LomboShelf/travel` | Body exactly `{"days": N}` (1 KB at most, one key, an integer from 1 to 1000; the plugin's cap is only a sanity check, Visa applies the real limit). `200 {"ok":true,"message":...}`, `422 {"ok":false,"message":...}` (Visa's own refusal text, cleaned to 200 printable characters), `400` bad body, `429` with `Retry-After`, `502 {"ok":false,"message":"could not complete the request"}`. |
+
+The person is always the verified `Jellyfin-UserId` claim; it is sent to Visa as 32 hex characters
+(`GET {VisaUrl}/v1/travel/<id>` and `POST {VisaUrl}/v1/travel` with `{"user_id": "<id>", "days": N}`, `Authorization: Bearer <token>`).
+10 second timeout, redirects not followed, answer read up to 64 KB. Visa 200 becomes 200, Visa 422 becomes 422, anything else
+(401, 429, 5xx, a timeout, an exception, a body of the wrong shape) becomes 502 with a fixed message and a log line with no
+address, token or detail. One travel request per person per 10 seconds and one in flight (its own counters, apart from keep).
+Administrator accounts get no special case in the plugin: Visa refuses them and the plugin passes its message through.
+`GET` has no cool-down of its own (the card asks once per Home view).
+
+**`travel-button.js`** (only when `features.travel`): on Home it asks `GET /LomboShelf/travel` and adds a collapsed card at
+the end of the Home tab: the end of the open window or the time another is allowed, a number box for days (1 to `max_days`)
+and an "Allow sign-in from abroad" button. The button posts only `{"days": N}`, disables itself while waiting, shows the
+returned message as text (cut to 200 characters; a failure shows only "Could not complete the request.") and asks again.
+Days outside 1 to `max_days` are not sent. On any error or an answer of the wrong shape the card is not shown, and the
+script waits 5 minutes before asking again.
+
 ## The web files
 
 | File | What |
@@ -177,6 +218,7 @@ title can be kept), and Farewell does not know who pressed it.
 | `web/header-nav.js` | Header order and groups. Does nothing without `headerNav` settings. |
 | `web/storage-tag.js` | SSD / HDD badge on a details page. Off unless `features.storageTags`. Fail-open. |
 | `web/keep-button.js` | "Leaving in N days" note and "Keep it longer" button. Off unless `features.keep`. Fail-open. |
+| `web/travel-button.js` | Collapsed "Travelling?" card on Home. Off unless `features.travel`. Fail-open. |
 | `web/lomboshelf.css` | Theme and layout. Colours are `--lshelf-*` variables. |
 
 Scripts only use the signed-in user's own `ApiClient` (their token and permissions), escape every title before it goes
@@ -205,9 +247,10 @@ plugin/
     Configuration/configPage.html       settings form (embedded), ApiClient.getPluginConfiguration / updatePluginConfiguration
     Api/WebAssetsController.cs          GET /LomboShelf/web/{file}: embedded files, allow-list, anonymous
     Api/ConfigController.cs             GET/POST /LomboShelf/config: settings for the settings page, admin only, checked on save; the token is never returned
-    Api/IntegrationController.cs        storage, leaving and keep routes (signed-in users), see Storage tags and the keep button
+    Api/IntegrationController.cs        storage, leaving, keep and travel routes (signed-in users), see Storage tags and the keep button, The travel card
     Services/ContractFiles.cs           reads tiers.json / leaving.json (size, version, cache); StorageResolver; id normalising
-    Services/Keep.cs                    FarewellClient (the one outbound call), KeepGuard (cooldown, one in flight)
+    Services/Keep.cs                    FarewellClient (the keep call), KeepGuard (cooldown, one in flight)
+    Services/Travel.cs                  VisaClient (the two travel calls), TravelGuard (its own cooldown and in-flight gate)
     Services/ItemAccess.cs              the seam in front of Jellyfin's library and users
     Services/FeatureGate.cs             "feature is on" in one place
     Services/IndexTransform.cs          pure: settings -> window.LomboShelfConfig JSON; html -> html with both script tags
@@ -222,7 +265,7 @@ plugin/
 
 The xUnit tests check: the script tags go before `</body>` (any case; appended when there is none) and a second pass
 changes nothing; the settings JSON cannot close the script tag (`<`, `>`, `&` are escaped) and still reads back to the
-original text; bad header-menu groups fall back to an empty list; only the nine listed files are served and
+original text; bad header-menu groups fall back to an empty list; only the ten listed files are served and
 `..`, slashes, encoded dots, other case, empty and `null` names get a 404 (the controller is called directly); the list
 equals the files in `web/` and the embedded resources; and the default settings produce exactly the defaults written in
 `web/loader.js` (the test reads that file). They do not run Jellyfin, the settings page's JavaScript, authorization on
@@ -258,7 +301,8 @@ entry); (3) test the settings page, desktop, a phone browser and a TV browser.
 - The next-season flow and the Jellyfin Enhanced endpoints it calls were taken from the original and not checked against
   that plugin's current version.
 - File Transformation: verified once against 3.0.3.0 on Jellyfin 12.4.0 (its source, `PluginInterface.RegisterTransformation(JObject)`, was read and matches the payload `id, fileNamePattern, callbackAssembly, callbackClass, callbackMethod`; the callback is called with `{contents}` and a returned string replaces the page). Load order the other way round, other versions and upgrades are unverified.
-- Storage tags and the keep button: unit tests (a fake library and a fake HTTP handler, no network) and jsdom tests only. Not run in a real Jellyfin: the `DefaultAuthorization` policy name, the library lookup on real items, the badge position on the real details page, the new settings fields on the real page and a call to a real Farewell. Never run against files written by the real Tier and Farewell.
+- Storage tags, the keep button and the travel routes: run on 2026-11-21 in a throwaway Jellyfin 12.4.0 (`test/real-jellyfin/run.sh`, 95 checks) against fake Farewell and Visa services and sample `tiers.json` and `leaving.json`. That proved the plain `[Authorize]` policy (12.4 has no policy named `DefaultAuthorization`), the `Jellyfin-UserId` claim, the library lookup, every route's answers, the cool-down and that no answer holds a token or a path. Not run: the badge position on the real details page, the new settings fields on the real page, and a real Farewell, Visa or Tier.
+- The travel card: its routes ran in the real-Jellyfin check above against a fake Visa. Not run: where the card lands on the real Home page and a call to a real LomboVisa.
 - Genre rows, "Continue watching", the next-season flow, the header menu and the settings page's screen (only its routes were called), TV layouts and real clients, installing from a plugin repository (zip, checksum, manifest), and any real library were never run.
 - The wordmark's leaning "F" in the banner did not render as leaning in the PNG (the SVG attribute is ignored by the renderer used).
 

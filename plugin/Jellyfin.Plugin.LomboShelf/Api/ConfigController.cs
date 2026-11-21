@@ -31,6 +31,9 @@ public class ConfigController : ControllerBase
         config.FarewellToken = ConfigSanitizer.MergeToken(config, plugin.Configuration.FarewellToken);
         config.ClearFarewellToken = false;
         config.FarewellTokenSet = false;
+        config.VisaToken = ConfigSanitizer.MergeVisaToken(config, plugin.Configuration.VisaToken);
+        config.ClearVisaToken = false;
+        config.VisaTokenSet = false;
         var errors = ConfigSanitizer.Sanitize(config);
         if (errors.Count > 0)
         {

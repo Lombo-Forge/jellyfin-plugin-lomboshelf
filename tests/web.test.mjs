@@ -498,3 +498,139 @@ test("keep: a long message is cut to 200 characters; a rate-limit answer shows i
   await tick(80);
   assert.equal(p.w.document.querySelector(".lshelf-keep-msg").textContent.length, 200);
 });
+
+// ---- travel card (off by default; calls the plugin's own travel route) ----
+const travelInfo = (over = {}) => ({ active: null, next_allowed: null, max_days: 14, ...over });
+const travelCfg = { features: { travel: true, homeShelf: false, browse: false } };
+const getTravel = (body = travelInfo(), status = 200) => ({ "GET /LomboShelf/travel": { status, body } });
+
+test("travel: does nothing by default and the loader defaults the switch to false", async () => {
+  const off = page({ cfg: {} });
+  const calls = withFetch(off.w, {});
+  off.w.eval(src("travel-button.js"));
+  await tick(60);
+  assert.equal(calls.length, 0);
+  assert.equal(off.w.document.querySelector("#lshelf-travel"), null);
+  const a = page({ cfg: { features: { homeShelf: false, browse: false } } });
+  a.w.eval(src("loader.js"));
+  assert.equal(a.w.LomboShelfConfig.features.travel, false);
+});
+
+test("travel: a collapsed card on Home with a days picker and the button", async () => {
+  const { w } = page({ cfg: travelCfg });
+  const calls = withFetch(w, getTravel());
+  w.eval(src("travel-button.js"));
+  await tick(80);
+  const card = w.document.querySelector("#homeTab > details.lshelf-travel");
+  assert.ok(card);
+  assert.equal(card.open, false, "collapsed");
+  assert.equal(card.querySelector("summary").textContent, "Travelling?");
+  assert.equal(card.querySelector(".lshelf-travel-status").textContent, "No window is open.");
+  const days = card.querySelector(".lshelf-travel-days");
+  assert.equal(days.min, "1");
+  assert.equal(days.max, "14");
+  assert.equal(card.querySelector(".lshelf-travel-btn").textContent, "Allow sign-in from abroad");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts.headers.Authorization, 'MediaBrowser Token="tok"');
+});
+
+test("travel: shows the end of an open window, or when the next one is allowed", async () => {
+  const a = page({ cfg: travelCfg });
+  withFetch(a.w, getTravel(travelInfo({ active: { ends: 1900000000 } })));
+  a.w.eval(src("travel-button.js"));
+  await tick(80);
+  assert.match(a.w.document.querySelector(".lshelf-travel-status").textContent, /^Sign-in from abroad is allowed until .+\.$/);
+  const b = page({ cfg: travelCfg });
+  withFetch(b.w, getTravel(travelInfo({ next_allowed: 1900000500 })));
+  b.w.eval(src("travel-button.js"));
+  await tick(80);
+  assert.match(b.w.document.querySelector(".lshelf-travel-status").textContent, /^You can open another window after .+\.$/);
+});
+
+test("travel: posts only the days, disables while waiting, shows the message and asks again", async () => {
+  const { w } = page({ cfg: travelCfg });
+  let release;
+  let opened = false;
+  const calls = withFetch(w, { "GET /LomboShelf/travel": () => ({ status: 200, body: opened ? travelInfo({ active: { ends: 1900000000 } }) : travelInfo() }) });
+  const base = w.fetch;
+  w.fetch = async (url, opts = {}) => {   // hold the POST until the test lets it go
+    if (opts.method !== "POST") return base(url, opts);
+    calls.push({ key: "POST " + url, opts });
+    await new Promise((r) => { release = r; });
+    opened = true;
+    return { status: 200, ok: true, json: async () => ({ ok: true, message: "Window opened for 5 days" }) };
+  };
+  w.eval(src("travel-button.js"));
+  await tick(80);
+  const input = w.document.querySelector(".lshelf-travel-days");
+  input.value = "5";
+  input.dispatchEvent(new w.Event("input"));
+  w.document.querySelector(".lshelf-travel-btn").click();
+  await tick(40);
+  assert.equal(w.document.querySelector(".lshelf-travel-btn").disabled, true, "disabled while waiting");
+  const post = calls.find((c) => c.key.startsWith("POST"));
+  assert.deepEqual(JSON.parse(post.opts.body), { days: 5 }, "only the days, no user id");
+  assert.equal(post.opts.headers.Authorization, 'MediaBrowser Token="tok"');
+  release();
+  await tick(80);
+  assert.equal(w.document.querySelector(".lshelf-travel-msg").textContent, "Window opened for 5 days");
+  assert.match(w.document.querySelector(".lshelf-travel-status").textContent, /allowed until/);
+  assert.equal(w.document.querySelector(".lshelf-travel-btn").disabled, false);
+});
+
+test("travel: a refusal is shown as text; a server error shows only a generic line", async () => {
+  const refuse = page({ cfg: travelCfg });
+  withFetch(refuse.w, { ...getTravel(), "POST /LomboShelf/travel": { status: 422, body: { ok: false, message: '<img src=x onerror="alert(1)"> use your admin tools' } } });
+  refuse.w.eval(src("travel-button.js"));
+  await tick(80);
+  refuse.w.document.querySelector(".lshelf-travel-btn").click();
+  await tick(80);
+  assert.equal(refuse.w.document.querySelector(".lshelf-travel-msg").textContent, '<img src=x onerror="alert(1)"> use your admin tools');
+  assert.equal(refuse.w.document.querySelector("#lshelf-travel img"), null);
+  for (const r of [{ status: 502, body: { ok: false, message: "http://visa.internal:8097 secret" } }, { status: 500, body: { message: "stack" } }, { reject: true }, { status: 200 }]) {
+    const p = page({ cfg: travelCfg });
+    withFetch(p.w, { ...getTravel(), "POST /LomboShelf/travel": r });
+    p.w.eval(src("travel-button.js"));
+    await tick(80);
+    p.w.document.querySelector(".lshelf-travel-btn").click();
+    await tick(80);
+    assert.equal(p.w.document.querySelector(".lshelf-travel-msg").textContent, "Could not complete the request.", JSON.stringify(r));
+  }
+});
+
+test("travel: a long message is cut to 200; days outside 1..max are not sent", async () => {
+  const p = page({ cfg: travelCfg });
+  const calls = withFetch(p.w, { ...getTravel(), "POST /LomboShelf/travel": { status: 429, body: { ok: false, message: "x".repeat(500) } } });
+  p.w.eval(src("travel-button.js"));
+  await tick(80);
+  for (const bad of ["0", "15", "", "abc"]) {
+    p.w.document.querySelector(".lshelf-travel-days").value = bad;
+    p.w.document.querySelector(".lshelf-travel-btn").click();
+    await tick(30);
+    assert.equal(calls.filter((c) => c.key.startsWith("POST")).length, 0, "not sent for " + bad);
+    assert.equal(p.w.document.querySelector(".lshelf-travel-msg").textContent, "Pick a number of days from 1 to 14.");
+  }
+  p.w.document.querySelector(".lshelf-travel-days").value = "3";
+  p.w.document.querySelector(".lshelf-travel-btn").click();
+  await tick(80);
+  assert.equal(p.w.document.querySelector(".lshelf-travel-msg").textContent.length, 200);
+});
+
+test("travel: no card on other pages, on errors or on a junk answer, and no call storm after a failure", async () => {
+  const other = page({ hash: "#/details?id=" + ID, html: detailsHtml + '<div id="homeTab"></div>', cfg: travelCfg });
+  const c0 = withFetch(other.w, getTravel());
+  other.w.eval(src("travel-button.js"));
+  await tick(80);
+  assert.equal(c0.length, 0);
+  const junk = [{ status: 404 }, { status: 502, body: { ok: false } }, { reject: true }, { status: 200, body: {} },
+    { status: 200, body: { active: null, next_allowed: null, max_days: 0 } }, { status: 200, body: { active: null, next_allowed: null, max_days: "7" } }];
+  for (const r of junk) {
+    const p = page({ cfg: travelCfg });
+    const calls = withFetch(p.w, { "GET /LomboShelf/travel": r });
+    p.w.eval(src("travel-button.js"));
+    await tick(80);
+    assert.equal(p.w.document.querySelector("#lshelf-travel"), null, JSON.stringify(r));
+    await tick(1700);   // the page polls every 1.5 s: after a failure it must wait, not ask again
+    assert.equal(calls.length, 1, "no retry within the back-off: " + JSON.stringify(r));
+  }
+});

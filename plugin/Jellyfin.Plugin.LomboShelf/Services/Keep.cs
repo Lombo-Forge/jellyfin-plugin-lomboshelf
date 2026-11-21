@@ -50,21 +50,8 @@ public sealed class FarewellClient : IFarewellClient
                 return new FarewellReply(status, null);
             }
 
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            var buffer = new byte[MaxResponseBytes + 1];
-            var total = 0;
-            int n;
-            while (total < buffer.Length && (n = await stream.ReadAsync(buffer.AsMemory(total, buffer.Length - total), ct).ConfigureAwait(false)) > 0)
-            {
-                total += n;
-            }
-
-            if (total > MaxResponseBytes)
-            {
-                return new FarewellReply(0, null);
-            }
-
-            return new FarewellReply(status, MessageFrom(buffer.AsSpan(0, total)));
+            var body = await ReadLimitedAsync(resp, ct).ConfigureAwait(false);
+            return body is null ? new FarewellReply(0, null) : new FarewellReply(status, MessageFrom(body));
         }
         catch (Exception ex)
         {
@@ -74,7 +61,23 @@ public sealed class FarewellClient : IFarewellClient
         }
     }
 
-    private static string? MessageFrom(ReadOnlySpan<byte> body)
+    /// <summary>The body, read up to <see cref="MaxResponseBytes"/>; null when it is longer.</summary>
+    public static async Task<byte[]?> ReadLimitedAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        var buffer = new byte[MaxResponseBytes + 1];
+        var total = 0;
+        int n;
+        while (total < buffer.Length && (n = await stream.ReadAsync(buffer.AsMemory(total, buffer.Length - total), ct).ConfigureAwait(false)) > 0)
+        {
+            total += n;
+        }
+
+        return total > MaxResponseBytes ? null : buffer.AsSpan(0, total).ToArray();
+    }
+
+    /// <summary>The "message" text of a JSON answer, cleaned; null when there is none.</summary>
+    public static string? MessageFrom(ReadOnlySpan<byte> body)
     {
         try
         {
@@ -117,7 +120,7 @@ public sealed class FarewellClient : IFarewellClient
 }
 
 /// <summary>One keep in flight at a time and at most one per user per 10 seconds.</summary>
-public sealed class KeepGuard
+public class KeepGuard
 {
     public static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(10);
     private readonly Func<DateTimeOffset> _now;

@@ -27,10 +27,22 @@ echo "== start a throwaway Jellyfin"
 docker rm -f lf-jf-real >/dev/null 2>&1 || true
 docker run -d --name lf-jf-real --cpus 2 --memory 2g --user "$(id -u):$(id -g)" -e HOME=/tmp -p 127.0.0.1:18096:8096 \
   -v "$s/config:/config" -v "$s/cache:/cache" -v "$s/media:/media:ro" "$img" >/dev/null
-trap 'docker rm -f lf-jf-real >/dev/null 2>&1 || true' EXIT
+trap 'docker rm -f lf-jf-stubs lf-jf-real >/dev/null 2>&1 || true' EXIT
 until curl -sf -o /dev/null http://127.0.0.1:18096/Startup/Configuration; do sleep 3; done
 python3 test/real-jellyfin/wizard.py
 docker logs lf-jf-real 2>&1 | grep -E "Loaded plugin: (LomboShelf|File Transformation)|index.html transformation registered" | cut -c1-160
+echo "== two fake services (a keep call and a travel call) inside the throwaway server's own network"
+# They share lf-jf-real's network, so the plugin reaches them at 127.0.0.1:18097 (travel) and :18098 (keep); nothing else can.
+# check.py writes the sample tiers.json and leaving.json into $s/config/contract (seen as /config/contract in the server).
+mkdir -p "$s/stubs" "$s/config/contract"; : > "$s/stubs/seen.jsonl"; : > "$s/stubs/admins.txt"
+LF_FAREWELL_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(16))"); export LF_FAREWELL_TOKEN
+LF_VISA_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(16))"); export LF_VISA_TOKEN
+LF_SCRATCH=$s; export LF_SCRATCH
+docker rm -f lf-jf-stubs >/dev/null 2>&1 || true
+docker run -d --name lf-jf-stubs --cpus 1 --memory 768m --user "$(id -u):$(id -g)" -e HOME=/tmp -e LF_FAREWELL_TOKEN -e LF_VISA_TOKEN \
+  --network container:lf-jf-real -v "$root/test/real-jellyfin:/w:ro" -v "$s/stubs:/stub" \
+  mcr.microsoft.com/playwright/python:v1.49.1-noble python3 /w/stubs.py >/dev/null
+n=0; until docker logs lf-jf-stubs 2>&1 | grep -q '^ready'; do n=$((n+1)); [ "$n" -lt 30 ] || { echo "stubs did not start"; docker logs lf-jf-stubs 2>&1 | tail -5; exit 1; }; sleep 1; done
 python3 test/real-jellyfin/check.py
 ip=$(docker inspect lf-jf-real --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
 echo "== browser (Playwright 1.49.1)"

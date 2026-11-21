@@ -66,13 +66,28 @@ public static class ConfigSanitizer
         return sent.Length == 0 ? (stored ?? string.Empty) : sent;
     }
 
-    /// <summary>A copy that is safe to send to a browser: the token is blank and FarewellTokenSet says whether one is stored.</summary>
+    /// <summary>The Visa token to save, by the same rule as <see cref="MergeToken"/>.</summary>
+    public static string MergeVisaToken(PluginConfiguration incoming, string? stored)
+    {
+        if (incoming.ClearVisaToken)
+        {
+            return string.Empty;
+        }
+
+        var sent = (incoming.VisaToken ?? string.Empty).Trim();
+        return sent.Length == 0 ? (stored ?? string.Empty) : sent;
+    }
+
+    /// <summary>A copy that is safe to send to a browser: both tokens are blank and the "...TokenSet" flags say whether one is stored.</summary>
     public static PluginConfiguration Redacted(PluginConfiguration c)
     {
         var copy = JsonSerializer.Deserialize<PluginConfiguration>(JsonSerializer.Serialize(c))!;
         copy.FarewellTokenSet = !string.IsNullOrEmpty(c.FarewellToken);
         copy.FarewellToken = string.Empty;
         copy.ClearFarewellToken = false;
+        copy.VisaTokenSet = !string.IsNullOrEmpty(c.VisaToken);
+        copy.VisaToken = string.Empty;
+        copy.ClearVisaToken = false;
         return copy;
     }
 
@@ -109,6 +124,32 @@ public static class ConfigSanitizer
         if (c.FarewellToken.Length > MaxToken || c.FarewellToken.Any(ch => ch < '!' || ch > '~'))
         {
             errors.Add($"Farewell token: at most {MaxToken} characters, visible characters only (no spaces or control characters).");
+        }
+
+        c.VisaUrl = (c.VisaUrl ?? string.Empty).Trim();
+        c.VisaToken = (c.VisaToken ?? string.Empty).Trim();
+        if (c.VisaUrl.Length > 0)
+        {
+            var visa = BaseUrl(c.VisaUrl);
+            if (visa is null)
+            {
+                errors.Add("Visa address: use http:// or https:// then the host and port only (no user name, path or query).");
+            }
+            else
+            {
+                c.VisaUrl = visa;
+            }
+        }
+
+        if (c.VisaToken.Length > MaxToken || c.VisaToken.Any(ch => ch < '!' || ch > '~'))
+        {
+            errors.Add($"Visa token: at most {MaxToken} characters, visible characters only (no spaces or control characters).");
+        }
+
+        if (c.TravelEnabled)
+        {
+            if (c.VisaUrl.Length == 0) errors.Add("The travel button needs the Visa address.");
+            if (c.VisaToken.Length == 0) errors.Add("The travel button needs the Visa token.");
         }
 
         if (c.StorageTagsEnabled && c.TiersFile.Length == 0)

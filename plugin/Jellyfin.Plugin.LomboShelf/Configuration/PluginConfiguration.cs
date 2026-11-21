@@ -86,4 +86,21 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Only in a save request: true clears the stored token (a blank token alone keeps it). Not saved.</summary>
     [XmlIgnore]
     public bool ClearFarewellToken { get; set; }
+
+    // travel button (off by default; the server calls Visa's self-service travel API for the signed-in user only)
+    public bool TravelEnabled { get; set; }
+
+    /// <summary>http or https, host and port only.</summary>
+    public string VisaUrl { get; set; } = string.Empty;
+
+    /// <summary>SECRET. Same handling as FarewellToken: never sent to a browser, never logged.</summary>
+    public string VisaToken { get; set; } = string.Empty;
+
+    /// <summary>Only in answers to the settings page: true when a Visa token is stored. Not saved.</summary>
+    [XmlIgnore]
+    public bool VisaTokenSet { get; set; }
+
+    /// <summary>Only in a save request: true clears the stored Visa token. Not saved.</summary>
+    [XmlIgnore]
+    public bool ClearVisaToken { get; set; }
 }
