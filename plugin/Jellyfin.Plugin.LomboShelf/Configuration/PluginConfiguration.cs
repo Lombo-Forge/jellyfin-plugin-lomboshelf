@@ -70,6 +70,12 @@ public class PluginConfiguration : BasePluginConfiguration
     // keep button (off by default; reads Farewell's leaving.json and calls its keep route from the server)
     public bool KeepEnabled { get; set; }
 
+    /// <summary>
+    /// Off by default. When on, the keep call to Farewell also carries "by": the signed-in person's Jellyfin user name, taken
+    /// from the verified caller on the server. Turn on only with LomboFarewell 0.3.0 or newer; older versions refuse the extra key.
+    /// </summary>
+    public bool KeepSendsName { get; set; }
+
     /// <summary>Absolute path of leaving.json as the Jellyfin process sees it.</summary>
     public string LeavingFile { get; set; } = string.Empty;
 

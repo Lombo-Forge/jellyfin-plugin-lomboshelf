@@ -108,6 +108,7 @@ other apps' promises and live in the Lombo hub repository's `docs/contracts.md` 
 | `KeepEnabled` | false | Turns the leaving note and keep button on. |
 | `LeavingFile` | empty | Absolute path of `leaving.json` as Jellyfin sees it. |
 | `FarewellUrl` | empty | `http` or `https`, host and port only (no user info, path, query or fragment). Saved as `scheme://host[:port]`. |
+| `KeepSendsName` | false | Adds `"by"` (the signed-in person's Jellyfin user name) to the keep call. Turn on only with LomboFarewell 0.3.0 or newer; older versions refuse the extra key. Not sent to the browser. |
 | `FarewellToken` | empty | **Secret.** At most 256 visible characters, no spaces or control characters. |
 
 The save check answers 400 with the list of problems for: a bad URL, a relative or `..` file path, a prefix with `..`, a bad
@@ -138,10 +139,18 @@ parent folder of it. So a movie matches its folder and an episode matches its se
 *Keep.* The server checks: the feature is on, the id is well formed, the caller may see the item, and the id is in
 `leaving.json` with `can_keep` true (every failure of the last two answers the same 422, so a person learns nothing about
 titles they cannot see). Then it calls `FarewellUrl/v1/keep` with `Authorization: Bearer <token>`, `Content-Type:
-application/json` and the body `{"title":"<32 hex id>"}`: 10 second timeout, redirects not followed, the answer read up to 64 KB.
+application/json` and the body `{"title":"<32 hex id>"}` (with `KeepSendsName` on, `{"title":"<32 hex id>","by":"<name>"}`): 10 second timeout, redirects not followed, the answer read up to 64 KB.
 Farewell 200 becomes 200 and Farewell 422 becomes 422 (its message cut to 200 printable characters); anything else, a timeout
 or an exception becomes 502 with a fixed message, and the log line has no address, token or detail. One keep per person per 10
 seconds (429 with `Retry-After`) and one keep in flight at a time (429, retry in 2 seconds).
+
+*The name (`KeepSendsName`).* Off by default, because Farewell 0.2.0 accepts exactly one key and answers 400 to a second. When on, the
+server looks the signed-in user up by the verified `Jellyfin-UserId` claim in Jellyfin's user manager and sends that user name as
+`by`, cleaned to Farewell's rule: characters Farewell would call not printable (control and format characters, line breaks, spaces other than a plain
+one, private use, unassigned) become spaces, the ends are trimmed and it is cut to 60 characters (counted as code points). If the user is
+not found or nothing valid is left, the answer is the generic 502 and Farewell is not called (a blank name is never sent, and the
+person's 10 second wait is not used up). The browser's body still has exactly one key, so a body that names someone else is a 400.
+The name is in no answer, log line or settings answer. Farewell then refuses a keep with no name when its per-person limit is on, which is why this setting exists.
 
 *Reading the files.* Only the configured path is opened. At most 4 MB; the file must be JSON with `"version": 1` (any other
 version means "no data", as the contracts say); the parsed result is cached by last-write time and size; any problem
@@ -301,7 +310,7 @@ entry); (3) test the settings page, desktop, a phone browser and a TV browser.
 - The next-season flow and the Jellyfin Enhanced endpoints it calls were taken from the original and not checked against
   that plugin's current version.
 - File Transformation: verified once against 3.0.3.0 on Jellyfin 12.4.0 (its source, `PluginInterface.RegisterTransformation(JObject)`, was read and matches the payload `id, fileNamePattern, callbackAssembly, callbackClass, callbackMethod`; the callback is called with `{contents}` and a returned string replaces the page). Load order the other way round, other versions and upgrades are unverified.
-- Storage tags, the keep button and the travel routes: run on 2026-11-21 in a throwaway Jellyfin 12.4.0 (`test/real-jellyfin/run.sh`, 95 checks) against fake Farewell and Visa services and sample `tiers.json` and `leaving.json`. That proved the plain `[Authorize]` policy (12.4 has no policy named `DefaultAuthorization`), the `Jellyfin-UserId` claim, the library lookup, every route's answers, the cool-down and that no answer holds a token or a path. Not run: the badge position on the real details page, the new settings fields on the real page, and a real Farewell, Visa or Tier.
+- Storage tags, the keep button and the travel routes: run on 2026-11-21 in a throwaway Jellyfin 12.4.0 (`test/real-jellyfin/run.sh`; now 104 checks) against fake Farewell and Visa services and sample `tiers.json` and `leaving.json`. That proved the plain `[Authorize]` policy (12.4 has no policy named `DefaultAuthorization`), the `Jellyfin-UserId` claim, the library lookup, every route's answers, the cool-down and that no answer holds a token or a path. Not run: the badge position on the real details page, the new settings fields on the real page, and a real Farewell, Visa or Tier.
 - The travel card: its routes ran in the real-Jellyfin check above against a fake Visa. Not run: where the card lands on the real Home page and a call to a real LomboVisa.
 - Genre rows, "Continue watching", the next-season flow, the header menu and the settings page's screen (only its routes were called), TV layouts and real clients, installing from a plugin repository (zip, checksum, manifest), and any real library were never run.
 - The wordmark's leaning "F" in the banner did not render as leaning in the PNG (the SVG attribute is ignored by the renderer used).

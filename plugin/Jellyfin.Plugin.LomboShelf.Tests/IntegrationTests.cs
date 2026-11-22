@@ -37,17 +37,23 @@ internal sealed class FakeItems : IItemAccess
 {
     public Dictionary<Guid, ItemFacts> Known { get; } = new();
 
+    public Dictionary<Guid, string> Names { get; } = new();
+
     public ItemFacts? Find(Guid itemId, Guid userId) => Known.TryGetValue(itemId, out var f) ? f : null;
+
+    public string? UserName(Guid userId) => Names.TryGetValue(userId, out var n) ? n : null;
 }
 
 internal sealed class FakeFarewell : IFarewellClient
 {
     public FarewellReply Reply { get; set; } = new(200, "kept");
     public List<(string Url, string Token, string Id)> Calls { get; } = new();
+    public List<string?> Names { get; } = new();
 
-    public Task<FarewellReply> KeepAsync(string baseUrl, string token, string itemIdHex, CancellationToken ct)
+    public Task<FarewellReply> KeepAsync(string baseUrl, string token, string itemIdHex, CancellationToken ct, string? by = null)
     {
         Calls.Add((baseUrl, token, itemIdHex));
+        Names.Add(by);
         return Task.FromResult(Reply);
     }
 }
@@ -511,6 +517,120 @@ public class IntegrationTests : IDisposable
         var call = Assert.Single(_farewell.Calls);
         Assert.Equal(("http://farewell.example:8098", "secret-token-value", MovieHex), call);
         Assert.DoesNotContain("secret-token-value", text);
+    }
+
+    [Fact]
+    public async Task Keep_SettingOff_SendsNoName()
+    {
+        Ready();
+        _items.Names[User1] = "Ann";
+        Assert.False(_cfg.Current.KeepSendsName);
+        Assert.Equal(200, (await Keep()).Status);
+        Assert.Null(Assert.Single(_farewell.Names));
+    }
+
+    [Fact]
+    public async Task Keep_SettingOn_SendsTheCallersNameFromTheClaimAndShowsItNowhere()
+    {
+        Ready();
+        _cfg.Current.KeepSendsName = true;
+        _items.Names[User1] = "Ann Lee";
+        _items.Names[Guid.Parse("22222222222222222222222222222222")] = "Bob";
+        var (status, text, c) = await Keep();
+        Assert.Equal(200, status);
+        Assert.Equal("Ann Lee", Assert.Single(_farewell.Names));
+        Assert.DoesNotContain("Ann", text);
+        Assert.DoesNotContain("Ann", string.Join(" ", c.Response.Headers.Select(h => h.Key + h.Value)));
+    }
+
+    [Fact]
+    public async Task Keep_NameComesOnlyFromTheClaim_ABodyNamingSomeoneElseIs400()
+    {
+        Ready();
+        _cfg.Current.KeepSendsName = true;
+        _items.Names[User1] = "Ann";
+        Assert.Equal(400, (await Keep("{\"itemId\":\"" + MovieHex + "\",\"by\":\"Mallory\"}")).Status);
+        Assert.Equal(400, (await Keep("{\"by\":\"Mallory\"}")).Status);
+        Assert.Empty(_farewell.Calls);
+        // Another signed-in user gets their own name.
+        var other = Guid.Parse("22222222222222222222222222222222");
+        _items.Names[other] = "Bob";
+        Assert.Equal(200, (await Keep(user: other)).Status);
+        Assert.Equal("Bob", Assert.Single(_farewell.Names));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Keep_SettingOn_LookupFailureOrUnusableNameIsA502AndFarewellIsNotCalled(bool blank)
+    {
+        Ready();
+        _cfg.Current.KeepSendsName = true;
+        if (blank)
+        {
+            _items.Names[User1] = " \u0007\u200b ";
+        }
+
+        var (status, text, _) = await Keep();
+        Assert.Equal(502, status);
+        Assert.Equal("{\"ok\":false,\"message\":\"could not complete the request\"}", text);
+        Assert.Empty(_farewell.Calls);
+        // The refusal did not use up the person's cooldown.
+        _items.Names[User1] = "Ann";
+        Assert.Equal(200, (await Keep()).Status);
+    }
+
+    [Theory]
+    [InlineData("Ann", "Ann")]
+    [InlineData("  Ann  Lee ", "Ann Lee")]
+    [InlineData("Ann\r\nLee", "Ann Lee")]
+    [InlineData("A\u00a0B", "A B")]
+    [InlineData("Zoë", "Zoë")]
+    [InlineData("a\u0007b", "a b")]
+    [InlineData("a\u200bb", "a b")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("\u0007\u200b", null)]
+    [InlineData(null, null)]
+    public void KeepName_Clean(string? input, string? expected) => Assert.Equal(expected, KeepName.Clean(input));
+
+    [Fact]
+    public void KeepName_CutsToSixtyCharactersWithNoSpaceAtTheEnd()
+    {
+        Assert.Equal(new string('x', 60), KeepName.Clean(new string('x', 200)));
+        var cut = KeepName.Clean(new string('x', 59) + " yyyy")!;
+        Assert.Equal(new string('x', 59), cut);
+        Assert.Equal(new string('x', 58) + " y", KeepName.Clean(new string('x', 58) + " yyyy"));
+        // Counted in code points, like Farewell: 60 emoji are 60 characters (120 UTF-16 units).
+        var emoji = KeepName.Clean(string.Concat(Enumerable.Repeat("\U0001F600", 80)))!;
+        Assert.Equal(60, emoji.EnumerateRunes().Count());
+        Assert.Null(KeepName.Clean("\ud800"));
+    }
+
+    [Fact]
+    public async Task Client_BodyWithAndWithoutTheName()
+    {
+        var h = new StubHandler { Respond = _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"ok\":true,\"message\":\"done\"}") } };
+        await Client(h).KeepAsync("http://f:1", "t", MovieHex, CancellationToken.None);
+        Assert.Equal("{\"title\":\"" + MovieHex + "\"}", h.SeenBody);
+        await Client(h).KeepAsync("http://f:1", "t", MovieHex, CancellationToken.None, "Ann Lee");
+        Assert.Equal("{\"title\":\"" + MovieHex + "\",\"by\":\"Ann Lee\"}", h.SeenBody);
+    }
+
+    [Fact]
+    public void KeepSendsName_IsOffByDefaultKeepsItsValueAndNeverReachesTheBrowserPage()
+    {
+        Assert.False(new PluginConfiguration().KeepSendsName);
+        var c = new PluginConfiguration { KeepSendsName = true, KeepEnabled = true, LeavingFile = "/l.json", FarewellUrl = "http://f:1", FarewellToken = "abc" };
+        Assert.Empty(ConfigSanitizer.Sanitize(c));
+        Assert.True(c.KeepSendsName);
+        Assert.True(ConfigSanitizer.Redacted(c).KeepSendsName);
+        Assert.DoesNotContain("SendsName", IndexTransform.BuildConfigJson(c), StringComparison.OrdinalIgnoreCase);
+        var xml = new System.Xml.Serialization.XmlSerializer(typeof(PluginConfiguration));
+        using var w = new StringWriter();
+        xml.Serialize(w, c);
+        using var r = new StringReader(w.ToString());
+        Assert.True(((PluginConfiguration)xml.Deserialize(r)!).KeepSendsName);
     }
 
     [Fact]

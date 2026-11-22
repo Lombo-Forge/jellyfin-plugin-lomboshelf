@@ -2,7 +2,7 @@
 
 They share the throwaway Jellyfin container's network, so the plugin reaches them at 127.0.0.1 and nothing else can.
 Standard library only. Each request is appended to /stub/seen.jsonl (service, method, path, whether the bearer token was
-right, the parsed body) so check.py can see what the plugin sent. The token itself is never written anywhere.
+right, the parsed body, as received) so check.py can see exactly what the plugin sent. The token itself is never written anywhere.
 /stub/admins.txt (written by check.py) lists the user ids the fake Visa treats as administrators.
 """
 
@@ -98,8 +98,19 @@ class Farewell(Base):
     def answer(self, method, path, body):
         if path != "/v1/keep" or method != "POST":
             return 404, {"ok": False, "message": "not found"}
-        title = body.get("title") if isinstance(body, dict) and len(body) == 1 else None
-        if not isinstance(title, str) or not HEX.match(title):
+        # Like Farewell 0.3.0: "title", and optionally "by" (1 to 60 printable characters, no space at either end).
+        # Farewell 0.2.0 would refuse the second key; check.py proves the plugin sends it only when asked to.
+        ok = isinstance(body, dict) and set(body) in ({"title"}, {"title", "by"})
+        title = body.get("title") if ok else None
+        by = body.get("by", "x") if ok else None
+        if (
+            not isinstance(title, str)
+            or not HEX.match(title)
+            or not isinstance(by, str)
+            or not 1 <= len(by) <= 60
+            or not by.isprintable()
+            or by != by.strip()
+        ):
             return 400, {"ok": False, "message": "bad request"}
         if title in kept:
             return 422, {"ok": False, "message": "This title was already kept."}
