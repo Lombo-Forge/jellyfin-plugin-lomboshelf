@@ -135,6 +135,19 @@ public class IntegrationController : ControllerBase
             return Fail(422, "this title cannot be kept right now");
         }
 
+        // The name comes only from the verified caller (the Jellyfin-UserId claim), never from the request body. When it cannot be
+        // found or made valid nothing is sent: Farewell is not called and the answer is the generic 502.
+        string? by = null;
+        if (c.KeepSendsName)
+        {
+            by = KeepName.Clean(_items.UserName(caller.Value));
+            if (by is null)
+            {
+                _log.LogWarning("A keep request did not complete.");
+                return Fail(502, "could not complete the request");
+            }
+        }
+
         if (!_guard.TryEnter(caller.Value, out var retry))
         {
             Response.Headers.RetryAfter = retry.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -144,7 +157,7 @@ public class IntegrationController : ControllerBase
         FarewellReply reply;
         try
         {
-            reply = await _farewell.KeepAsync(c.FarewellUrl, c.FarewellToken, key, ct).ConfigureAwait(false);
+            reply = await _farewell.KeepAsync(c.FarewellUrl, c.FarewellToken, key, ct, by).ConfigureAwait(false);
         }
         finally
         {

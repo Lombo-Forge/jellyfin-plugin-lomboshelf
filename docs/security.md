@@ -15,6 +15,11 @@ Both are off by default. Each holds one token on the server and calls one other 
 - The address and token an administrator saves in the plugin's settings (administrators only). The address must be
   `http://` or `https://` plus host and port, with no user name, path, query or fragment. The plugin sends the token only
   in the `Authorization` header of the one request to that address.
+- Farewell's `by` (only when the admin turns on `KeepSendsName`): the Jellyfin user name of the same verified caller, looked
+  up on the server from the `Jellyfin-UserId` claim, never from the request body. It is cleaned and cut to Farewell's rule (1 to
+  60 printable characters, no space at either end); if the lookup fails or nothing valid is left, the request is a 502 and
+  Farewell is not called. Farewell trusts the plugin's token and records the name as given: it is only as true as this plugin.
+  Turn it on only with LomboFarewell 0.3.0 or newer; older versions refuse the extra key.
 - Visa's and Farewell's answers only as far as the plugin reads them: a status, a short message (cut to 200 printable
   characters and shown as text) and, for the travel status, three numbers in an exact shape. Anything else is treated as
   "no answer".
@@ -35,6 +40,8 @@ Both are off by default. Each holds one token on the server and calls one other 
 - The token is never written to the log, never put in a URL, never returned by any route (the settings route returns it
   blank plus a "token is saved" flag, and a blank token on save keeps the stored one), never put in
   `window.LomboShelfConfig` or `index.html`.
+- The user name sent as `by` is in no answer to the browser, no log line and not in `window.LomboShelfConfig`. It does
+  reach Farewell, which stores it (state file, keep history, `leaving.json`) by design.
 - Log lines say only that a request did not complete and, for an exception, its type name. They hold no address, user id,
   token or reply text.
 - File paths (`tiers.json`, `leaving.json`) and the other app's address stay on the server too.
@@ -50,5 +57,10 @@ Both are off by default. Each holds one token on the server and calls one other 
 ## Not verified
 
 Unit tests (a fake client, a fake HTTP handler, no network) cover this, and on 2026-11-21 `test/real-jellyfin/run.sh` proved the routes in a real
-Jellyfin 12.4 against two small fake services (95 checks, including that no answer holds a token or a path). It has not been run
+Jellyfin 12.4 against two small fake services (104 checks, including that no answer holds a token or a path). It has not been run
 against a real Farewell, Visa or Tier. See the README's "What is not verified".
+
+`KeepSendsName`: unit tests cover the body with and without it, the name cleaning, a failed lookup and that the name comes only
+from the claim. The real-Jellyfin harness has a check for it (the fake Farewell records the body; it proves the caller's real
+user name arrives as `by` and appears in no answer), written on 2026-11-22 but **not yet run**. Not verified: a call to a real
+LomboFarewell 0.3.0 with its per-person limit on, and that the log holds no name in a real Jellyfin (the code logs a fixed line only).

@@ -73,8 +73,8 @@ admin = login("admin", "lf-test-pass")
 check("settings: anonymous gets 401", call("GET", "/LomboShelf/config")[0] == 401)
 code, cfg = call("GET", "/LomboShelf/config", token=admin)
 check("settings: admin gets 200", code == 200)
-call("POST", "/Users/New", {"Name": "viewer", "Password": "viewer-pass"}, admin)
-viewer = login("viewer", "viewer-pass")
+call("POST", "/Users/New", {"Name": "lf-viewer", "Password": "viewer-pass"}, admin)
+viewer = login("lf-viewer", "viewer-pass")
 check(
     "settings: a normal user gets 403",
     call("GET", "/LomboShelf/config", token=viewer)[0] == 403,
@@ -93,7 +93,46 @@ check(
 movies = call("GET", "/Items?Recursive=true&IncludeItemTypes=Movie", token=admin)[1][
     "Items"
 ]
-call("POST", f"/Collections?name=Leaving%20soon&ids={movies[0]['Id']}", token=admin)
+
+
+def dct(x):
+    return x if isinstance(x, dict) else {}
+
+
+def library_scan_idle():
+    tasks = call("GET", "/ScheduledTasks?isHidden=false", token=admin)[1]
+    scans = [
+        t for t in tasks if isinstance(t, dict) and t.get("Key") == "RefreshLibrary"
+    ]
+    return all(t.get("State") == "Idle" for t in scans)
+
+
+def make_collection():
+    """A library scan that is still running can drop a collection made meanwhile: wait for it, then make it, then
+    check it is there and holds the movie, and make it again if not."""
+    for _ in range(4):
+        for _ in range(30):
+            if library_scan_idle():
+                break
+            time.sleep(1)
+        call(
+            "POST",
+            f"/Collections?name=Leaving%20soon&ids={movies[0]['Id']}",
+            token=admin,
+        )
+        time.sleep(3)
+        found = dct(
+            call(
+                "GET",
+                "/Items?Recursive=true&IncludeItemTypes=BoxSet&NameStartsWith=Leaving",
+                token=admin,
+            )[1]
+        ).get("Items", [])
+        if any(b.get("Name") == "Leaving soon" for b in found):
+            return
+
+
+make_collection()
 cfg["CollectionRows"] = [{"Name": "Leaving soon", "Title": "Leaving soon", "Limit": 10}]
 check(
     "settings: a valid collection row is saved",
@@ -134,10 +173,6 @@ def calls_of(service, method=None):
         for x in stub_log()
         if x["service"] == service and (method is None or x["method"] == method)
     ]
-
-
-def dct(x):
-    return x if isinstance(x, dict) else {}
 
 
 def movie_id(prefix):
@@ -470,6 +505,47 @@ check(
     call("GET", "/LomboShelf/travel", token=viewer)[0] == 200,
 )
 
+# 6b. The keep call carries the person's name only when "KeepSendsName" is on, and only the caller's own name.
+# (Section 5 ran with the setting off: its calls to Farewell were exactly {"title"}.) The viewer's user name is "lf-viewer".
+code, _ = call(
+    "POST",
+    "/LomboShelf/config",
+    {**on, "KeepSendsName": True, "FarewellToken": "", "VisaToken": ""},
+    admin,
+)
+check("keep name: the setting is saved", code == 200)
+check(
+    "keep name: the settings page can read the switch back (a plain true or false)",
+    dct(call("GET", "/LomboShelf/config", token=admin)[1]).get("KeepSendsName") is True,
+)
+before = len(calls_of("farewell"))
+code, body = call("POST", "/LomboShelf/keep", {"itemId": space}, viewer)
+check(
+    "keep name: the answer is Farewell's own message and holds no name",
+    code == 422 and body == {"ok": False, "message": "This title was already kept."},
+)
+sent = calls_of("farewell")[before:]
+check(
+    "keep name: Farewell got the id and the caller's own name",
+    len(sent) == 1 and sent[0]["body"] == {"title": space, "by": "lf-viewer"},
+)
+code, _ = call("POST", "/LomboShelf/keep", {"itemId": space, "by": "admin"}, viewer)
+check(
+    "keep name: a body naming someone else is 400 and never reaches Farewell",
+    code == 400 and len(calls_of("farewell")) == before + 1,
+)
+check(
+    "keep name: every call so far with the setting off sent exactly the id",
+    all(x["body"] == {"title": space} for x in calls_of("farewell")[:before]),
+)
+code, _ = call(
+    "POST",
+    "/LomboShelf/config",
+    {**on, "KeepSendsName": False, "FarewellToken": "", "VisaToken": ""},
+    admin,
+)
+check("keep name: switching it off again is saved", code == 200)
+
 # 7. Clearing: a feature switched on cannot lose its token; switched off, the routes are 404 again.
 check(
     "settings: clearing the Visa token while travel is on is refused",
@@ -547,8 +623,67 @@ for needle in (
         not any(needle in t for t in route_answers + page_answers),
     )
 check(
+    "no route answer, page setting or settings answer holds the caller's name",
+    not any(
+        "lf-viewer" in t
+        for t in route_answers
+        + page_answers
+        + [t for p, t in answers if p.startswith("/LomboShelf/config")]
+    ),
+)
+check(
     "no route answer holds a media file path",
     not any("/media/" in t for t in route_answers),
 )
+
+# 9. The Home row test in browser.py needs the 'Leaving soon' collection to exist and hold a movie. Say so here, separately,
+# so a missing row can be told apart: collection gone (a Jellyfin or harness race) or present but not drawn (a Shelf bug).
+collection_ok = False
+kids = {}
+for _ in range(20):
+    boxsets = dct(
+        call(
+            "GET",
+            "/Items?Recursive=true&IncludeItemTypes=BoxSet&NameStartsWith=Leaving",
+            token=admin,
+        )[1]
+    ).get("Items", [])
+    mine = [b for b in boxsets if b.get("Name") == "Leaving soon"]
+    if mine:
+        kids = dct(call("GET", f"/Items?ParentId={mine[0]['Id']}", token=admin)[1])
+        collection_ok = kids.get("TotalRecordCount", 0) >= 1
+        if not collection_ok:
+            # Jellyfin can lose a collection's movie link when a library scan re-processes the item (seen in about
+            # one run in three). Add the movie as it is now, so the browser step tests Shelf and not that.
+            now_movies = dct(
+                call(
+                    "GET", "/Items?Recursive=true&IncludeItemTypes=Movie", token=admin
+                )[1]
+            ).get("Items", [])
+            if now_movies:
+                call(
+                    "POST",
+                    f"/Collections/{mine[0]['Id']}/Items?ids={now_movies[0]['Id']}",
+                    token=admin,
+                )
+                time.sleep(2)
+                kids = dct(
+                    call("GET", f"/Items?ParentId={mine[0]['Id']}", token=admin)[1]
+                )
+                collection_ok = kids.get("TotalRecordCount", 0) >= 1
+    if collection_ok:
+        break
+    time.sleep(1)
+check(
+    "the 'Leaving soon' collection exists and holds a movie before the browser step",
+    collection_ok,
+)
+if not collection_ok:  # what the check saw, so the cause can be read from the log
+    print(
+        "  boxsets seen:",
+        [b.get("Name") for b in boxsets],
+        "children:",
+        kids if mine else "n/a",
+    )
 
 sys.exit(1 if failures else 0)

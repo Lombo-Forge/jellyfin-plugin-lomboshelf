@@ -81,6 +81,10 @@ Both are off until you switch them on in the plugin's settings page, which asks 
 - Keep button: the full path of `leaving.json`, Farewell's address (`http://host:port`, nothing else) and its token. The
   token is saved on the server, shown as a password box, never sent back to the settings page (it says whether one is saved;
   leaving the box empty keeps it) and never put in the page's settings.
+- Keep with a name (`KeepSendsName`, off by default): when LomboFarewell limits keeps per person it refuses a keep with no
+  name. Turn this on and the server adds the signed-in person's own Jellyfin user name to the keep call (`"by"`). **Turn
+  on only with LomboFarewell 0.3.0 or newer; older versions refuse the extra key.** The name is read by the server from the
+  verified sign-in, never from the browser, and is not put in any answer, log line or the page's settings.
 
 The server resolves the folder and makes the keep call. The browser only sends the item id with the signed-in person's own
 token and never sees a file path. The design and its reasons are in [docs/design.md](docs/design.md#storage-tags-and-the-keep-button).
@@ -101,6 +105,7 @@ The test is repeatable: `sh test/real-jellyfin/run.sh` builds the plugin, starts
 
 Not run, and so unverified:
 
+- `KeepSendsName` (the keep call carrying the person's name): xUnit tests cover it, and the real-Jellyfin harness (104 checks, six clean runs in a row on 2026-11-22) proves it against a fake Farewell: setting off sends exactly `{"title"}`, setting on sends the signed-in person's name from Jellyfin's user manager, a body naming someone else is refused, and the name is in no answer. Never run against a real LomboFarewell 0.3.0 with its per-person limit on, and its settings checkbox was never opened in a browser.
 - Storage tags, the keep button and the travel routes: on 2026-11-21 `test/real-jellyfin/run.sh` ran them in a throwaway Jellyfin 12.4.0 against two small fake services (a fake Farewell and a fake Visa) and sample `tiers.json` and `leaving.json` files, with a real admin and a real normal user: 95 checks passed. That proved the plain `[Authorize]` policy and the `Jellyfin-UserId` claim, the library lookup on real items, the tier answers (an administrator gets `ssd` or `hdd`, a normal user gets 204 while 'administrators only' is on), the leaving lookup, the keep and travel calls with their refusals (422) and failures (502), the cool-down, 401 for anonymous, 404 when a feature is off, the token kept out of every answer, and no file path in any answer. (Jellyfin 12.4 has no policy named `DefaultAuthorization`: the first version used it and every new route answered 500. The harness found it.) **Still not run:** where the badge, the note and the Travelling card land on the real details and Home pages (the selectors `.itemName`, `.nameContainer` come from older jellyfin-web, and no screenshot shows them), the settings page's new fields in a browser, and a call to a real LomboFarewell, LomboVisa or real files written by LomboTier.
 
 - The travel card: its routes were proven in the real-Jellyfin run described above, against a fake Visa. Not run: where the card lands on the real Home page, the new settings fields on the real settings page, and a call to a real LomboVisa.

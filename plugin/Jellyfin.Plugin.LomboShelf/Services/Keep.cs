@@ -11,7 +11,7 @@ public sealed record FarewellReply(int Status, string? Message);
 
 public interface IFarewellClient
 {
-    Task<FarewellReply> KeepAsync(string baseUrl, string token, string itemIdHex, CancellationToken ct);
+    Task<FarewellReply> KeepAsync(string baseUrl, string token, string itemIdHex, CancellationToken ct, string? by = null);
 }
 
 /// <summary>Calls Farewell's keep route. The token is only ever put in the Authorization header of that one request.</summary>
@@ -34,13 +34,20 @@ public sealed class FarewellClient : IFarewellClient
         _log = log;
     }
 
-    public async Task<FarewellReply> KeepAsync(string baseUrl, string token, string itemIdHex, CancellationToken ct)
+    public async Task<FarewellReply> KeepAsync(string baseUrl, string token, string itemIdHex, CancellationToken ct, string? by = null)
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, baseUrl.TrimEnd('/') + "/v1/keep");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            req.Content = new StringContent(JsonSerializer.Serialize(new Dictionary<string, string> { ["title"] = itemIdHex }), Encoding.UTF8);
+            // Farewell 0.2.0 refuses any key but "title", so "by" is only added when the caller was given a name.
+            var payload = new Dictionary<string, string> { ["title"] = itemIdHex };
+            if (by is not null)
+            {
+                payload["by"] = by;
+            }
+
+            req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8);
             req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
             using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
@@ -117,6 +124,87 @@ public sealed class FarewellClient : IFarewellClient
 
         return s.Length == 0 ? null : s;
     }
+}
+
+/// <summary>The "by" name Farewell accepts: 1 to 60 printable characters with no space at either end.</summary>
+public static class KeepName
+{
+    public const int Max = 60;
+
+    /// <summary>
+    /// A user name made to fit Farewell's rule: characters Farewell would call not printable (control, format, separator other than
+    /// a plain space, unassigned, private use, lone surrogates) become spaces, the ends are trimmed, and it is cut to 60 characters
+    /// (counted as code points, as Farewell does). Null when nothing is left.
+    /// </summary>
+    public static string? Clean(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return null;
+        }
+
+        var sb = new StringBuilder();
+        var count = 0;
+        var pendingSpace = false;
+        foreach (var rune in RunesOf(name))
+        {
+            if (count >= Max)
+            {
+                break;
+            }
+
+            var printable = rune is not null && (rune.Value.Value == ' ' || IsPrintable(rune.Value));
+            if (!printable || rune!.Value.Value == ' ')
+            {
+                pendingSpace = sb.Length > 0;
+                continue;
+            }
+
+            // A space only counts when something printable follows it, so the cut never leaves a trailing space.
+            if (pendingSpace)
+            {
+                if (count + 1 >= Max)
+                {
+                    break;
+                }
+
+                sb.Append(' ');
+                count++;
+                pendingSpace = false;
+            }
+
+            sb.Append(rune.Value.ToString());
+            count++;
+        }
+
+        return sb.Length == 0 ? null : sb.ToString();
+    }
+
+    private static IEnumerable<Rune?> RunesOf(string s)
+    {
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]))
+            {
+                yield return new Rune(s[i], s[i + 1]);
+                i++;
+            }
+            else if (char.IsSurrogate(s[i]))
+            {
+                yield return null;   // a lone surrogate
+            }
+            else
+            {
+                yield return new Rune(s[i]);
+            }
+        }
+    }
+
+    private static bool IsPrintable(Rune r) => Rune.GetUnicodeCategory(r) is not (
+        System.Globalization.UnicodeCategory.Control or System.Globalization.UnicodeCategory.Format
+        or System.Globalization.UnicodeCategory.Surrogate or System.Globalization.UnicodeCategory.PrivateUse
+        or System.Globalization.UnicodeCategory.OtherNotAssigned or System.Globalization.UnicodeCategory.LineSeparator
+        or System.Globalization.UnicodeCategory.ParagraphSeparator or System.Globalization.UnicodeCategory.SpaceSeparator);
 }
 
 /// <summary>One keep in flight at a time and at most one per user per 10 seconds.</summary>

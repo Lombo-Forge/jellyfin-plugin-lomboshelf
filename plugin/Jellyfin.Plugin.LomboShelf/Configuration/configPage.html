@@ -47,6 +47,8 @@
                 <div class="inputContainer"><label class="inputLabel" for="FarewellUrl">Farewell address (http:// or https://, host and port only)</label><input is="emby-input" type="text" id="FarewellUrl"></div>
                 <div class="inputContainer"><label class="inputLabel" for="FarewellToken">Farewell token</label><input is="emby-input" type="password" id="FarewellToken" autocomplete="new-password"><div class="fieldDescription" id="FarewellTokenState"></div></div>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ClearFarewellToken"><span>Remove the saved token</span></label>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="KeepSendsName"><span>Send the person's Jellyfin name with each keep</span></label>
+                <div class="fieldDescription">Needed only when LomboFarewell limits keeps per person. Turn on only with LomboFarewell 0.3.0 or newer; older versions refuse the extra key. The name is the signed-in person's own, read by this server, never taken from the browser.</div>
                 <h3>Travel button (optional, off by default)</h3>
                 <p class="fieldDescription">Shows a small "Travelling?" card on Home where a signed-in person can allow sign-in from abroad for themselves, through LomboVisa's self-service API. This server makes the call for the signed-in person only; the token below is kept on the server and is never sent to a browser.</p>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="TravelEnabled"><span>Show the travel card</span></label>
@@ -69,7 +71,7 @@
             var url = function () { return ApiClient.getUrl("LomboShelf/config"); };
             var bools = ["FeatureTheme", "FeatureHomeShelf", "FeatureBrowse", "FeatureNextSeason", "FeatureHeaderNav",
                 "ShelfResume", "ShelfKeepWatching", "ShelfNewThisWeek", "ShelfGenres", "NextSeasonShowArt",
-                "StorageTagsEnabled", "StorageTagsAdminsOnly", "KeepEnabled", "TravelEnabled"];
+                "StorageTagsEnabled", "StorageTagsAdminsOnly", "KeepEnabled", "KeepSendsName", "TravelEnabled"];
             var lists = ["BrowseMergeLibraries", "HeaderNavOrder", "HeaderNavHide"];
             var page = document.querySelector("#LomboShelfConfigPage");
             function el(id) { return page.querySelector("#" + id); }

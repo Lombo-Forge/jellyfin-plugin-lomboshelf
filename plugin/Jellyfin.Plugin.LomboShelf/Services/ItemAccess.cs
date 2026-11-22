@@ -22,6 +22,9 @@ public sealed record ItemFacts(ItemKind Kind, string? Path, bool CallerIsAdmin);
 public interface IItemAccess
 {
     ItemFacts? Find(Guid itemId, Guid userId);
+
+    /// <summary>The Jellyfin user name of a verified caller; null when the user is not found.</summary>
+    string? UserName(Guid userId);
 }
 
 public sealed class JellyfinItemAccess : IItemAccess
@@ -34,6 +37,8 @@ public sealed class JellyfinItemAccess : IItemAccess
         _library = library;
         _users = users;
     }
+
+    public string? UserName(Guid userId) => _users.GetUserById(userId)?.Username;
 
     public ItemFacts? Find(Guid itemId, Guid userId)
     {
