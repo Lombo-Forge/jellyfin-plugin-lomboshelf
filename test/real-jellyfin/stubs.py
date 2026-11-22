@@ -114,7 +114,12 @@ class Visa(Base):
     def state(self, user):
         ends = windows.get(user)
         active = {"id": 1, "ends": ends} if ends and ends > time.time() else None
-        return {"ok": True, "active": active, "next_allowed": None, "max_days": MAX_DAYS}
+        return {
+            "ok": True,
+            "active": active,
+            "next_allowed": None,
+            "max_days": MAX_DAYS,
+        }
 
     def answer(self, method, path, body):
         m = re.match(r"^/v1/travel/([0-9a-f]{32})$", path)

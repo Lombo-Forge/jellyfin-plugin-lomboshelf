@@ -52,7 +52,10 @@ for attempt in range(30):
     items = call("GET", "/Items?Recursive=true&IncludeItemTypes=Movie", token=token)
     if items["TotalRecordCount"] >= 3:
         break
-    if attempt in (5, 15):  # the first scan can start before the folder is registered; ask again
+    if attempt in (
+        5,
+        15,
+    ):  # the first scan can start before the folder is registered; ask again
         call("POST", "/Library/Refresh", token=token)
 print(
     f"[ ok ] library has {items['TotalRecordCount']} movies"
