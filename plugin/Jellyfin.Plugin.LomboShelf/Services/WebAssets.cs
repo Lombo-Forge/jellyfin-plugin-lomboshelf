@@ -13,6 +13,7 @@ public static class WebAssets
         ["header-nav.js"] = "text/javascript",
         ["storage-tag.js"] = "text/javascript",
         ["keep-button.js"] = "text/javascript",
+        ["travel-button.js"] = "text/javascript",
         ["lomboshelf.css"] = "text/css"
     };
 

@@ -52,6 +52,25 @@ internal sealed class FakeFarewell : IFarewellClient
     }
 }
 
+internal sealed class FakeVisa : IVisaClient
+{
+    public VisaReply StatusReply { get; set; } = new(200, null, new TravelState(null, null, 14));
+    public VisaReply OpenReply { get; set; } = new(200, "window opened");
+    public List<(string Url, string Token, string User, int Days)> Calls { get; } = new();
+
+    public Task<VisaReply> StatusAsync(string baseUrl, string token, string userIdHex, CancellationToken ct)
+    {
+        Calls.Add((baseUrl, token, userIdHex, 0));
+        return Task.FromResult(StatusReply);
+    }
+
+    public Task<VisaReply> OpenAsync(string baseUrl, string token, string userIdHex, int days, CancellationToken ct)
+    {
+        Calls.Add((baseUrl, token, userIdHex, days));
+        return Task.FromResult(OpenReply);
+    }
+}
+
 internal sealed class StubHandler : HttpMessageHandler
 {
     public Func<HttpRequestMessage, HttpResponseMessage> Respond { get; set; } = _ => new HttpResponseMessage(HttpStatusCode.OK);
@@ -78,12 +97,15 @@ public class IntegrationTests : IDisposable
     private readonly FakeItems _items = new();
     private readonly FakeFarewell _farewell = new();
     private readonly KeepGuard _guard;
+    private readonly TravelGuard _travelGuard;
+    private readonly FakeVisa _visa = new();
     private readonly ContractReader _reader = new();
     private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     public IntegrationTests()
     {
         _guard = new KeepGuard(() => _now);
+        _travelGuard = new TravelGuard(() => _now);
     }
 
     public void Dispose() => _dir.Dispose();
@@ -94,7 +116,7 @@ public class IntegrationTests : IDisposable
         var id = user ?? User1;
         http.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("Jellyfin-UserId", id.ToString("N")) }, "test"));
         http.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body ?? string.Empty));
-        return new IntegrationController(_cfg, _items, _reader, _farewell, _guard, NullLogger<IntegrationController>.Instance)
+        return new IntegrationController(_cfg, _items, _reader, _farewell, _guard, _visa, _travelGuard, NullLogger<IntegrationController>.Instance)
         { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
@@ -214,20 +236,23 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
-    public void OnlyTheTwoSwitchesReachTheBrowser()
+    public void OnlyTheThreeSwitchesReachTheBrowser()
     {
         var c = new PluginConfiguration
         {
             StorageTagsEnabled = true, TiersFile = "/secret/tiers.json", TiersPathPrefix = "/media/", KeepEnabled = true,
-            LeavingFile = "/secret/leaving.json", FarewellUrl = "http://farewell.example:8098", FarewellToken = "secret-token-value"
+            LeavingFile = "/secret/leaving.json", FarewellUrl = "http://farewell.example:8098", FarewellToken = "secret-token-value",
+            TravelEnabled = true, VisaUrl = "http://visa.example:8097", VisaToken = "visa-secret-value"
         };
         var json = IndexTransform.BuildConfigJson(c);
         Assert.DoesNotContain("secret", json);
         Assert.DoesNotContain("farewell", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("visa", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/media/", json);
         using var doc = JsonDocument.Parse(json);
         Assert.True(doc.RootElement.GetProperty("features").GetProperty("storageTags").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("features").GetProperty("keep").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("features").GetProperty("travel").GetBoolean());
     }
 
     // ---------- the token ----------
@@ -404,6 +429,10 @@ public class IntegrationTests : IDisposable
         Assert.IsType<NotFoundResult>(c.Storage(MovieHex));
         Assert.IsType<NotFoundResult>(c.Leaving(MovieHex));
         Assert.Empty(_farewell.Calls);
+        _cfg.Current = new PluginConfiguration { TravelEnabled = true, VisaUrl = "http://visa.example:8097" };   // no token: off
+        Assert.IsType<NotFoundResult>(await c.TravelStatus(CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await Controller("{\"days\":3}").TravelOpen(CancellationToken.None));
+        Assert.Empty(_visa.Calls);
     }
 
     [Fact]
@@ -641,5 +670,299 @@ public class IntegrationTests : IDisposable
         Assert.Equal(200, FarewellClient.Clean(new string('x', 500))!.Length);
         Assert.Null(FarewellClient.Clean("  \t "));
         Assert.Null(FarewellClient.Clean(null));
+    }
+
+    // ---------- travel ----------
+
+    private const string VisaToken = "visa-token-value-1234567890";
+
+    private void TravelOn() =>
+        _cfg.Current = new PluginConfiguration { TravelEnabled = true, VisaUrl = "http://visa.example:8097", VisaToken = VisaToken };
+
+    private async Task<(int Status, string Text, IntegrationController C)> Open(string? body = "{\"days\":5}", Guid? user = null)
+    {
+        var c = Controller(body, user);
+        var content = Assert.IsType<ContentResult>(await c.TravelOpen(CancellationToken.None));
+        return (content.StatusCode ?? 0, content.Content ?? string.Empty, c);
+    }
+
+    [Fact]
+    public void Travel_IsOffByDefault()
+    {
+        var c = new PluginConfiguration();
+        Assert.False(c.TravelEnabled);
+        Assert.False(FeatureGate.Travel(c));
+        Assert.False(FeatureGate.Travel(new PluginConfiguration { TravelEnabled = true, VisaUrl = "http://v:1" }));
+        Assert.True(FeatureGate.Travel(new PluginConfiguration { TravelEnabled = true, VisaUrl = "http://v:1", VisaToken = "t" }));
+    }
+
+    [Theory]
+    [InlineData("ftp://host")]
+    [InlineData("http://user:pw@host")]
+    [InlineData("http://host/path")]
+    [InlineData("http://host?x=1")]
+    [InlineData("host:8097")]
+    [InlineData("http://ho st")]
+    public void Sanitizer_RejectsBadVisaUrls(string url)
+    {
+        Assert.Contains(ConfigSanitizer.Sanitize(new PluginConfiguration { VisaUrl = url }), e => e.StartsWith("Visa address"));
+    }
+
+    [Fact]
+    public void Sanitizer_NormalisesVisaUrlAndChecksTheToken()
+    {
+        var c = new PluginConfiguration { VisaUrl = "https://visa.example/" };
+        Assert.Empty(ConfigSanitizer.Sanitize(c));
+        Assert.Equal("https://visa.example", c.VisaUrl);
+        Assert.Contains(ConfigSanitizer.Sanitize(new PluginConfiguration { VisaToken = "has space" }), e => e.StartsWith("Visa token"));
+        Assert.Contains(ConfigSanitizer.Sanitize(new PluginConfiguration { VisaToken = new string('a', 257) }), e => e.StartsWith("Visa token"));
+        Assert.Empty(ConfigSanitizer.Sanitize(new PluginConfiguration { VisaToken = new string('a', 256) }));
+    }
+
+    [Fact]
+    public void Sanitizer_TravelNeedsItsSettings()
+    {
+        Assert.Equal(2, ConfigSanitizer.Sanitize(new PluginConfiguration { TravelEnabled = true }).Count);
+        Assert.Empty(ConfigSanitizer.Sanitize(new PluginConfiguration { TravelEnabled = true, VisaUrl = "http://v:1", VisaToken = "abc" }));
+    }
+
+    [Fact]
+    public void VisaToken_IsNeverReturned_BlankKeeps_ClearFlagClears()
+    {
+        var c = new PluginConfiguration { VisaToken = VisaToken, FarewellToken = "farewell-secret" };
+        var red = ConfigSanitizer.Redacted(c);
+        Assert.Equal(string.Empty, red.VisaToken);
+        Assert.True(red.VisaTokenSet);
+        Assert.DoesNotContain(VisaToken, JsonSerializer.Serialize(red));
+        Assert.Equal(VisaToken, c.VisaToken);
+        Assert.False(ConfigSanitizer.Redacted(new PluginConfiguration()).VisaTokenSet);
+        Assert.Equal("old", ConfigSanitizer.MergeVisaToken(new PluginConfiguration { VisaToken = "  " }, "old"));
+        Assert.Equal("new", ConfigSanitizer.MergeVisaToken(new PluginConfiguration { VisaToken = " new " }, "old"));
+        Assert.Equal(string.Empty, ConfigSanitizer.MergeVisaToken(new PluginConfiguration { VisaToken = "new", ClearVisaToken = true }, "old"));
+        // The two tokens are independent.
+        Assert.Equal("farewell-old", ConfigSanitizer.MergeToken(new PluginConfiguration { ClearVisaToken = true }, "farewell-old"));
+        var xml = new System.Xml.Serialization.XmlSerializer(typeof(PluginConfiguration));
+        using var w = new StringWriter();
+        xml.Serialize(w, new PluginConfiguration { VisaTokenSet = true, ClearVisaToken = true });
+        Assert.DoesNotContain("VisaTokenSet", w.ToString());
+        Assert.DoesNotContain("ClearVisaToken", w.ToString());
+    }
+
+    [Fact]
+    public async Task Travel_Status_MapsVisaAndUsesTheCallerFromTheClaim()
+    {
+        TravelOn();
+        _visa.StatusReply = new VisaReply(200, null, new TravelState(1900000000, null, 14));
+        var c = Controller();
+        var text = Text(await c.TravelStatus(CancellationToken.None));
+        Assert.Equal("{\"active\":{\"ends\":1900000000},\"next_allowed\":null,\"max_days\":14}", text);
+        Assert.Equal("no-store", c.Response.Headers.CacheControl.ToString());
+        var call = Assert.Single(_visa.Calls);
+        Assert.Equal(("http://visa.example:8097", VisaToken, User1.ToString("N"), 0), call);
+        Assert.DoesNotContain(VisaToken, text);
+
+        _visa.StatusReply = new VisaReply(200, null, new TravelState(null, 1900000500, 7));
+        Assert.Equal("{\"active\":null,\"next_allowed\":1900000500,\"max_days\":7}", Text(await Controller().TravelStatus(CancellationToken.None)));
+    }
+
+    [Theory]
+    [InlineData(500)]
+    [InlineData(401)]
+    [InlineData(429)]
+    [InlineData(0)]
+    public async Task Travel_Status_AnythingElseIs502WithNoDetail(int visaStatus)
+    {
+        TravelOn();
+        _visa.StatusReply = new VisaReply(visaStatus, "internal detail " + VisaToken);
+        var content = Assert.IsType<ContentResult>(await Controller().TravelStatus(CancellationToken.None));
+        Assert.Equal(502, content.StatusCode);
+        Assert.Equal("{\"ok\":false,\"message\":\"could not complete the request\"}", content.Content);
+    }
+
+    [Fact]
+    public async Task Travel_Open_SendsTheDaysForTheCallerOnly()
+    {
+        TravelOn();
+        var other = Guid.NewGuid();
+        // A hostile body naming someone else is refused outright: the only key allowed is "days".
+        var (badStatus, _, _) = await Open("{\"days\":3,\"user_id\":\"" + other.ToString("N") + "\"}");
+        Assert.Equal(400, badStatus);
+        Assert.Empty(_visa.Calls);
+
+        var (status, text, _) = await Open("{\"days\":5}");
+        Assert.Equal(200, status);
+        Assert.Equal("{\"ok\":true,\"message\":\"window opened\"}", text);
+        var call = Assert.Single(_visa.Calls);
+        Assert.Equal(("http://visa.example:8097", VisaToken, User1.ToString("N"), 5), call);
+        Assert.DoesNotContain(VisaToken, text);
+
+        // A different signed-in user is sent as that user, not as the first.
+        Assert.Equal(200, (await Open("{\"days\":2}", other)).Status);
+        Assert.Equal(other.ToString("N"), _visa.Calls[1].User);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not json")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("{\"days\":\"5\"}")]
+    [InlineData("{\"days\":5.5}")]
+    [InlineData("{\"days\":0}")]
+    [InlineData("{\"days\":-1}")]
+    [InlineData("{\"days\":1001}")]
+    [InlineData("{\"days\":99999999999}")]
+    [InlineData("{\"days\":null}")]
+    [InlineData("{\"day\":3}")]
+    [InlineData("{\"days\":3,\"days\":4}")]
+    public async Task Travel_Open_BadBodyIs400AndNothingIsCalled(string body)
+    {
+        TravelOn();
+        Assert.Equal(400, (await Open(body)).Status);
+        Assert.Empty(_visa.Calls);
+    }
+
+    [Fact]
+    public async Task Travel_Open_RefusalIsPassedThroughCleaned_AlsoForAdministrators()
+    {
+        TravelOn();
+        _visa.OpenReply = new VisaReply(422, "use your admin tools");
+        var (status, text, _) = await Open();
+        Assert.Equal(422, status);
+        Assert.Equal("{\"ok\":false,\"message\":\"use your admin tools\"}", text);
+        _now += TimeSpan.FromSeconds(11);
+        _visa.OpenReply = new VisaReply(422, null);
+        Assert.Equal("{\"ok\":false,\"message\":\"travel cannot be opened right now\"}", (await Open()).Text);
+    }
+
+    [Theory]
+    [InlineData(500)]
+    [InlineData(401)]
+    [InlineData(429)]
+    [InlineData(404)]
+    [InlineData(0)]
+    public async Task Travel_Open_AnythingElseIs502WithNoDetail(int visaStatus)
+    {
+        TravelOn();
+        _visa.OpenReply = new VisaReply(visaStatus, "internal detail " + VisaToken);
+        var (status, text, _) = await Open();
+        Assert.Equal(502, status);
+        Assert.Equal("{\"ok\":false,\"message\":\"could not complete the request\"}", text);
+    }
+
+    [Fact]
+    public async Task Travel_Open_CooldownIsPerUserTenSeconds_AndSeparateFromKeep()
+    {
+        TravelOn();
+        Assert.Equal(200, (await Open()).Status);
+        _now += TimeSpan.FromSeconds(4);
+        var (status, _, c) = await Open();
+        Assert.Equal(429, status);
+        Assert.Equal("6", c.Response.Headers.RetryAfter.ToString());
+        Assert.Single(_visa.Calls);
+        Assert.Equal(200, (await Open(user: Guid.NewGuid())).Status);
+        _now += TimeSpan.FromSeconds(7);
+        Assert.Equal(200, (await Open()).Status);
+        // A keep press does not use up the travel cooldown.
+        Assert.True(_guard.TryEnter(User1, out _));
+        _guard.Exit();
+        _now += TimeSpan.FromSeconds(11);
+        Assert.Equal(200, (await Open()).Status);
+    }
+
+    [Fact]
+    public async Task Travel_WithoutAVerifiedUserClaim_Is401AndNothingIsCalled()
+    {
+        TravelOn();
+        var http = new DefaultHttpContext();
+        http.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"days\":3}"));
+        var c = new IntegrationController(_cfg, _items, _reader, _farewell, _guard, _visa, _travelGuard, NullLogger<IntegrationController>.Instance)
+        { ControllerContext = new ControllerContext { HttpContext = http } };
+        Assert.IsType<UnauthorizedResult>(await c.TravelStatus(CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await c.TravelOpen(CancellationToken.None));
+        http.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("Jellyfin-UserId", "not-a-guid") }, "test"));
+        Assert.IsType<UnauthorizedResult>(await c.TravelOpen(CancellationToken.None));
+        Assert.Empty(_visa.Calls);
+    }
+
+    [Fact]
+    public async Task Travel_Status_IsNotHeldByTheCooldown()
+    {
+        TravelOn();
+        Assert.Equal(200, (await Open()).Status);
+        Assert.Equal(200, Assert.IsType<ContentResult>(await Controller().TravelStatus(CancellationToken.None)).StatusCode);
+    }
+
+    // ---------- the Visa client against a fake handler (no network) ----------
+
+    private static VisaClient VisaHttp(StubHandler h) => new(new HttpClient(h));
+
+    [Fact]
+    public async Task VisaClient_Status_SendsTheTokenOnlyInTheHeaderAndReadsTheState()
+    {
+        var h = new StubHandler
+        {
+            Respond = _ => new HttpResponseMessage(HttpStatusCode.OK)
+            { Content = new StringContent("{\"ok\":true,\"active\":{\"id\":3,\"ends\":1900000000},\"next_allowed\":1900001000,\"max_days\":14}") }
+        };
+        var r = await VisaHttp(h).StatusAsync("http://visa.example:8097", "tok-123", MovieHex, CancellationToken.None);
+        Assert.Equal(200, r.Status);
+        Assert.Equal(new TravelState(1900000000, 1900001000, 14), r.State);
+        Assert.Equal("http://visa.example:8097/v1/travel/" + MovieHex, h.Seen!.RequestUri!.ToString());
+        Assert.Equal(HttpMethod.Get, h.Seen.Method);
+        Assert.Equal("Bearer", h.Seen.Headers.Authorization!.Scheme);
+        Assert.Equal("tok-123", h.Seen.Headers.Authorization.Parameter);
+        Assert.DoesNotContain("tok-123", h.Seen.RequestUri.ToString());
+    }
+
+    [Theory]
+    [InlineData("{\"active\":null,\"next_allowed\":null,\"max_days\":14}", true)]
+    [InlineData("{\"active\":null,\"next_allowed\":null}", false)]
+    [InlineData("{\"active\":{},\"next_allowed\":null,\"max_days\":14}", false)]
+    [InlineData("{\"active\":5,\"next_allowed\":null,\"max_days\":14}", false)]
+    [InlineData("{\"active\":null,\"next_allowed\":\"x\",\"max_days\":14}", false)]
+    [InlineData("{\"active\":null,\"next_allowed\":null,\"max_days\":0}", false)]
+    [InlineData("{\"active\":null,\"next_allowed\":null,\"max_days\":99999}", false)]
+    [InlineData("{\"active\":{\"ends\":-5},\"next_allowed\":null,\"max_days\":14}", false)]
+    [InlineData("[]", false)]
+    [InlineData("nope", false)]
+    public async Task VisaClient_Status_OnlyAnExactShapeCounts(string body, bool good)
+    {
+        var h = new StubHandler { Respond = _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) } };
+        var r = await VisaHttp(h).StatusAsync("http://v:1", "t", MovieHex, CancellationToken.None);
+        Assert.Equal(good ? 200 : 0, r.Status);
+        Assert.Equal(good, r.State is not null);
+    }
+
+    [Fact]
+    public async Task VisaClient_Open_PostsExactlyUserAndDays_Maps422_DropsOtherBodies()
+    {
+        var h = new StubHandler { Respond = _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"ok\":true,\"message\":\"done\"}") } };
+        Assert.Equal(new VisaReply(200, "done"), await VisaHttp(h).OpenAsync("http://v:1", "tok-123", MovieHex, 5, CancellationToken.None));
+        Assert.Equal("http://v:1/v1/travel", h.Seen!.RequestUri!.ToString());
+        Assert.Equal("application/json", h.Seen.Content!.Headers.ContentType!.ToString());
+        Assert.Equal("{\"user_id\":\"" + MovieHex + "\",\"days\":5}", h.SeenBody);
+        Assert.DoesNotContain("tok-123", h.SeenBody);
+        Assert.Equal("tok-123", h.Seen.Headers.Authorization!.Parameter);
+
+        h.Respond = _ => new HttpResponseMessage((HttpStatusCode)422) { Content = new StringContent("{\"ok\":false,\"message\":\"too long\"}") };
+        Assert.Equal(new VisaReply(422, "too long"), await VisaHttp(h).OpenAsync("http://v:1", "t", MovieHex, 99, CancellationToken.None));
+        h.Respond = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("{\"message\":\"stack trace\"}") };
+        Assert.Equal(new VisaReply(500, null), await VisaHttp(h).OpenAsync("http://v:1", "t", MovieHex, 1, CancellationToken.None));
+        h.Respond = _ => new HttpResponseMessage(HttpStatusCode.Found);
+        Assert.Equal(new VisaReply(302, null), await VisaHttp(h).OpenAsync("http://v:1", "t", MovieHex, 1, CancellationToken.None));
+        h.Respond = _ => throw new HttpRequestException("boom http://v:1 token t");
+        Assert.Equal(new VisaReply(0, null), await VisaHttp(h).OpenAsync("http://v:1", "t", MovieHex, 1, CancellationToken.None));
+        Assert.Equal(new VisaReply(0, null), await VisaHttp(h).StatusAsync("http://v:1", "t", MovieHex, CancellationToken.None));
+        var field = typeof(VisaClient).GetField("_http", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        Assert.Equal(TimeSpan.FromSeconds(10), ((HttpClient)field.GetValue(new VisaClient())!).Timeout);
+    }
+
+    [Fact]
+    public async Task VisaClient_ReadsAtMost64KB()
+    {
+        var big = "{\"ok\":true,\"message\":\"" + new string('a', FarewellClient.MaxResponseBytes) + "\"}";
+        var h = new StubHandler { Respond = _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(big) } };
+        Assert.Equal(new VisaReply(0, null), await VisaHttp(h).OpenAsync("http://v:1", "t", MovieHex, 1, CancellationToken.None));
     }
 }

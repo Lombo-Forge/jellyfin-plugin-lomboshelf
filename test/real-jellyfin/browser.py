@@ -19,10 +19,15 @@ with sync_playwright() as p:
         page.fill("#txtManualName", "admin")
         page.fill("#txtManualPassword", "lf-test-pass")
         page.click("button[type=submit]")
-        page.wait_for_timeout(9000)
-        rows = page.evaluate(
-            "[...document.querySelectorAll('.lshelf-row h2, .lshelf-row .lshelf-title')].map(e => e.textContent.trim())"
-        )
+        for _ in range(
+            30
+        ):  # the rows are built after several requests: wait for them, up to 30 s
+            page.wait_for_timeout(1000)
+            rows = page.evaluate(
+                "[...document.querySelectorAll('.lshelf-row h2, .lshelf-row .lshelf-title')].map(e => e.textContent.trim())"
+            )
+            if rows == ["New this week", "Leaving soon"]:
+                break
         accent = page.evaluate(
             "getComputedStyle(document.documentElement).getPropertyValue('--lshelf-accent')"
         ).strip()

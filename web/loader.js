@@ -15,7 +15,7 @@
   var vq = script && script.src ? (script.src.match(/\?v=[A-Za-z0-9._-]+/) || [""])[0] : "";
   var defaults = {
     theme: { bg: "#141414", surface: "#1f1f1f", surface2: "#2a2a2a", text: "#e5e5e5", muted: "#a3a3a3", accent: "#e50914", accentHover: "#f6121d", radius: "6px" },
-    features: { theme: true, homeShelf: true, browse: true, nextSeason: false, headerNav: false, storageTags: false, keep: false },
+    features: { theme: true, homeShelf: true, browse: true, nextSeason: false, headerNav: false, storageTags: false, keep: false, travel: false },
     shelf: { resume: true, keepWatching: true, newThisWeek: true, genres: true, genreLimit: 0 },
     collectionRows: [],
     browse: { mergeLibraries: [] },
@@ -69,6 +69,7 @@
   if (f.headerNav && conf.headerNav) files.push("header-nav.js");
   if (f.storageTags) files.push("storage-tag.js");
   if (f.keep) files.push("keep-button.js");
+  if (f.travel) files.push("travel-button.js");
   files.reduce(function (p, file) { return p.then(function () { return js(file); }); }, Promise.resolve());
   if (!f.theme) document.documentElement.classList.add("lshelf-no-theme");
 })();

@@ -21,8 +21,8 @@ public static class IndexTransform
             {
                 ["theme"] = c.FeatureTheme, ["homeShelf"] = c.FeatureHomeShelf, ["browse"] = c.FeatureBrowse,
                 ["nextSeason"] = c.FeatureNextSeason, ["headerNav"] = c.FeatureHeaderNav,
-                // Only the two switches go to the browser; paths, the address and the token stay on the server.
-                ["storageTags"] = FeatureGate.StorageTags(c), ["keep"] = FeatureGate.Keep(c)
+                // Only the three switches go to the browser; paths, addresses and tokens stay on the server.
+                ["storageTags"] = FeatureGate.StorageTags(c), ["keep"] = FeatureGate.Keep(c), ["travel"] = FeatureGate.Travel(c)
             },
             ["shelf"] = new Dictionary<string, object?>
             {

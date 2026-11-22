@@ -187,5 +187,14 @@ html.lshelf-browse-on header.MuiAppBar-root button[title="View settings"] { disp
 .lshelf-keep-note { color: var(--lshelf-text); font-weight: 600; }
 .lshelf-keep-msg { color: var(--lshelf-muted); }
 .lshelf-keep-btn[disabled] { opacity: .6; cursor: default; }
+/* Travel card on Home (travel-button.js) */
+.lshelf-travel { margin: 1em 4% 1.5em; padding: .6em 1em; background: var(--lshelf-surface); color: var(--lshelf-text); border-radius: var(--lshelf-radius); max-width: 34em; }
+.lshelf-travel summary { cursor: pointer; font-weight: 600; }
+.lshelf-travel-status, .lshelf-travel-msg { margin: .6em 0 0; }
+.lshelf-travel-msg { color: var(--lshelf-muted); }
+.lshelf-travel-row { display: flex; align-items: center; flex-wrap: wrap; gap: .6em; margin-top: .6em; }
+.lshelf-travel-days { width: 4.5em; margin-left: .4em; padding: .3em .4em; color: var(--lshelf-text); background: var(--lshelf-surface-2); border: 1px solid rgba(255, 255, 255, .25); border-radius: 4px; }
+.lshelf-travel-btn[disabled] { opacity: .6; cursor: default; }
+.layout-tv .lshelf-travel { font-size: 20px; }
 .layout-tv .lshelf-storage-tag { font-size: 18px; }
 .layout-tv .lshelf-keep-box { font-size: 20px; }

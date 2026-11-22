@@ -47,6 +47,12 @@
                 <div class="inputContainer"><label class="inputLabel" for="FarewellUrl">Farewell address (http:// or https://, host and port only)</label><input is="emby-input" type="text" id="FarewellUrl"></div>
                 <div class="inputContainer"><label class="inputLabel" for="FarewellToken">Farewell token</label><input is="emby-input" type="password" id="FarewellToken" autocomplete="new-password"><div class="fieldDescription" id="FarewellTokenState"></div></div>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ClearFarewellToken"><span>Remove the saved token</span></label>
+                <h3>Travel button (optional, off by default)</h3>
+                <p class="fieldDescription">Shows a small "Travelling?" card on Home where a signed-in person can allow sign-in from abroad for themselves, through LomboVisa's self-service API. This server makes the call for the signed-in person only; the token below is kept on the server and is never sent to a browser.</p>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="TravelEnabled"><span>Show the travel card</span></label>
+                <div class="inputContainer"><label class="inputLabel" for="VisaUrl">Visa address (http:// or https://, host and port only)</label><input is="emby-input" type="text" id="VisaUrl"></div>
+                <div class="inputContainer"><label class="inputLabel" for="VisaToken">Visa token</label><input is="emby-input" type="password" id="VisaToken" autocomplete="new-password"><div class="fieldDescription" id="VisaTokenState"></div></div>
+                <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="ClearVisaToken"><span>Remove the saved Visa token</span></label>
                 <h3>Other</h3>
                 <label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" id="NextSeasonShowArt"><span>Show backdrop art in the next-season dialog</span></label>
                 <div class="inputContainer"><label class="inputLabel" for="BrowseMergeLibraries">Libraries to merge when browsing (comma separated)</label><input is="emby-input" type="text" id="BrowseMergeLibraries"></div>
@@ -59,11 +65,11 @@
     </div>
     <script type="text/javascript">
         (function () {
-            var texts = ["Accent", "AccentHover", "Bg", "Surface", "Surface2", "Text", "Muted", "Radius", "HeaderNavGroupsJson", "TiersFile", "TiersPathPrefix", "LeavingFile", "FarewellUrl"];
+            var texts = ["Accent", "AccentHover", "Bg", "Surface", "Surface2", "Text", "Muted", "Radius", "HeaderNavGroupsJson", "TiersFile", "TiersPathPrefix", "LeavingFile", "FarewellUrl", "VisaUrl"];
             var url = function () { return ApiClient.getUrl("LomboShelf/config"); };
             var bools = ["FeatureTheme", "FeatureHomeShelf", "FeatureBrowse", "FeatureNextSeason", "FeatureHeaderNav",
                 "ShelfResume", "ShelfKeepWatching", "ShelfNewThisWeek", "ShelfGenres", "NextSeasonShowArt",
-                "StorageTagsEnabled", "StorageTagsAdminsOnly", "KeepEnabled"];
+                "StorageTagsEnabled", "StorageTagsAdminsOnly", "KeepEnabled", "TravelEnabled"];
             var lists = ["BrowseMergeLibraries", "HeaderNavOrder", "HeaderNavHide"];
             var page = document.querySelector("#LomboShelfConfigPage");
             function el(id) { return page.querySelector("#" + id); }
@@ -92,6 +98,9 @@
                     el("FarewellToken").value = "";
                     el("ClearFarewellToken").checked = false;
                     el("FarewellTokenState").textContent = c.FarewellTokenSet ? "A token is saved. Leave this empty to keep it." : "No token saved.";
+                    el("VisaToken").value = "";
+                    el("ClearVisaToken").checked = false;
+                    el("VisaTokenState").textContent = c.VisaTokenSet ? "A token is saved. Leave this empty to keep it." : "No token saved.";
                     el("CollectionRowsText").value = rowsToText(c.CollectionRows);
                     Dashboard.hideLoadingMsg();
                 }, function () { Dashboard.hideLoadingMsg(); Dashboard.alert("Could not load the LomboShelf settings."); });
@@ -106,9 +115,11 @@
                     c.ShelfGenreLimit = parseInt(el("ShelfGenreLimit").value, 10) || 0;
                     c.FarewellToken = el("FarewellToken").value;
                     c.ClearFarewellToken = el("ClearFarewellToken").checked;
+                    c.VisaToken = el("VisaToken").value;
+                    c.ClearVisaToken = el("ClearVisaToken").checked;
                     c.CollectionRows = textToRows(el("CollectionRowsText").value);
                     ApiClient.ajax({ type: "POST", url: url(), data: JSON.stringify(c), contentType: "application/json", dataType: "json" }).then(
-                        function () { el("FarewellToken").value = ""; Dashboard.hideLoadingMsg(); Dashboard.alert("Saved. Reload the web client to see the changes."); },
+                        function () { el("FarewellToken").value = ""; el("VisaToken").value = ""; Dashboard.hideLoadingMsg(); Dashboard.alert("Saved. Reload the web client to see the changes."); },
                         function (r) {
                             Dashboard.hideLoadingMsg();
                             var show = function (b) { Dashboard.alert((b && b.errors ? b.errors : ["Could not save the settings."]).join("\n")); };
