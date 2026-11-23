@@ -14,13 +14,13 @@
 A streaming-style Home for Jellyfin's web client: a Resume card, Keep watching, New this week, one row per genre, genre
 chips on the Movies and Shows pages, an optional next-season prompt, and a dark theme whose colours you set.
 
-> **Status: early. It works in one real test, and is not released.** The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 166 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). There is no release or plugin repository yet (see [docs/design.md](docs/design.md)).
+> **Status: early. Released as 0.1.1 (a plugin repository entry exists in the Lombo hub); it has worked in one real test.** The storage tags, keep button and travel card are on `main` and unreleased. The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 166 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). Installing from the plugin repository is described in [docs/design.md](docs/design.md); it has not been tried on a real server.
 
 ## Contents
 
 - [What you get](#what-you-get)
 - [Try the web files by hand](#try-the-web-files-by-hand)
-- [Install in a minute (planned)](#install-in-a-minute-planned)
+- [Install in a minute](#install-in-a-minute)
 - [Settings](#settings)
 - [What is not verified](#what-is-not-verified)
 - [FAQ](#faq)
@@ -54,12 +54,12 @@ add this to the page (for example with a custom-JavaScript plugin you already tr
 
 `loader.js` loads `lomboshelf.css` and the other scripts from the same folder. Remove the two lines to go back to stock.
 
-## Install in a minute (planned)
+## Install in a minute
 
-This is how it is meant to work once the plugin is built and released; it does not work today.
+The plugin zip and its manifest entry exist (0.1.1), but nobody has installed it from the repository on a real server yet, so treat these steps as untested.
 
 1. Install the **File Transformation** plugin.
-2. Dashboard, Plugins, Repositories, add the LomboShelf repository URL, then install LomboShelf and restart Jellyfin.
+2. Dashboard, Plugins, Repositories, add the Lombo repository URL (`https://lombo-forge.github.io/lombo/manifest.json`), then install LomboShelf and restart Jellyfin.
 3. Open the plugin's settings and pick your colours and features.
 
 ## Settings
