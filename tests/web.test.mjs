@@ -348,7 +348,10 @@ test("collection rows: loader defaults to an empty list and keeps a given list",
 
 // ---- storage tag and keep button (off by default; they call the plugin's own routes) ----
 const ID = "0123456789abcdef0123456789abcdef";
-const detailsHtml = '<div id="itemDetailPage"><div class="nameContainer"><h1 class="itemName">A Film</h1></div></div>';
+// As jellyfin-web 12.4 builds it: an earlier details page stays in the document, hidden, ahead of the one now shown.
+const detailsDiv = (cls) => `<div class="page itemDetailPage ${cls}"><div class="nameContainer"><h1 class="itemName">A Film</h1></div>` +
+  '<div class="detailPagePrimaryContent"><div class="detailSection"><p class="overview">About it.</p></div></div></div>';
+const detailsHtml = detailsDiv("hide") + detailsDiv("");
 
 // A fake fetch that answers by "METHOD path" and records the calls. `routes[key]` is { status, body } or a function.
 function withFetch(w, routes) {
@@ -373,6 +376,22 @@ test("storage tag and keep button do nothing by default", async () => {
   await tick();
   assert.equal(calls.length, 0);
   assert.equal(w.document.querySelector(".lshelf-storage-tag, .lshelf-keep-box"), null);
+});
+
+test("storage tag and keep note go to the top of the details text on the page now shown", async () => {
+  const { w } = detailsPage({ features: { storageTags: true, keep: true } });
+  withFetch(w, {
+    ["GET /LomboShelf/storage/" + ID]: { status: 200, body: { tier: "ssd" } },
+    ["GET /LomboShelf/leaving/" + ID]: { status: 200, body: { days_left: 3, can_keep: true } },
+  });
+  w.eval(src("storage-tag.js"));
+  w.eval(src("keep-button.js"));
+  await tick(80);
+  for (const sel of ["#lshelf-storage-tag", "#lshelf-keep-box"]) {
+    const el = w.document.querySelector(sel);
+    assert.ok(el.parentNode.matches(".itemDetailPage:not(.hide) .detailSection"), sel);
+  }
+  assert.equal(w.document.querySelector("#lshelf-keep-box").nextSibling.id, "lshelf-storage-tag", "note first, then badge");
 });
 
 test("loader loads the two scripts only when their switch is on", async () => {

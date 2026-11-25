@@ -42,9 +42,10 @@
     return m ? m[1] : "";
   }
 
-  // Where our small note goes on a details page: after the title block. Null when the page has none (we then show nothing).
-  function titleAnchor() {
-    return document.querySelector(".itemName, .nameContainer, .detailPagePrimaryContainer");
+  // Where our small notes go: the top of the details text on the page now shown. Jellyfin keeps earlier details pages in
+  // the document, hidden, so the lookup must skip those. Null when there is no such block (we then show nothing).
+  function detailsSlot() {
+    return document.querySelector(".itemDetailPage:not(.hide) .detailPagePrimaryContent .detailSection");
   }
 
   function isTV() { return document.documentElement.classList.contains("layout-tv"); }
@@ -151,7 +152,7 @@
   var FIELDS = "PrimaryImageAspectRatio,RunTimeTicks,ChildCount,ProductionYear,BasicSyncInfo";
 
   window.__lomboShelfUI = {
-    esc: esc, own: own, detailsId: detailsId, titleAnchor: titleAnchor, ready: ready, uid: uid, jf: jf, cfg: cfg, isTV: isTV, sub: sub, img: img, poster: poster, still: still,
+    esc: esc, own: own, detailsId: detailsId, detailsSlot: detailsSlot, ready: ready, uid: uid, jf: jf, cfg: cfg, isTV: isTV, sub: sub, img: img, poster: poster, still: still,
     href: href, card: card, wide: wide, play: play, row: row, FIELDS: FIELDS, dur: dur, minutes: minutes
   };
 })();
