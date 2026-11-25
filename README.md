@@ -14,7 +14,7 @@
 A streaming-style Home for Jellyfin's web client: a Resume card, Keep watching, New this week, one row per genre, genre
 chips on the Movies and Shows pages, an optional next-season prompt, and a dark theme whose colours you set.
 
-> **Status: early. Released as 0.1.1 (a plugin repository entry exists in the Lombo hub); it has worked in one real test.** The storage tags, keep button and travel card are on `main` and unreleased. The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 166 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). Installing from the plugin repository is described in [docs/design.md](docs/design.md); it has not been tried on a real server.
+> **Status: early. Released as 0.2.0; it has worked in one real test.** The storage tags, keep button and travel card are new in 0.2.0, off by default, and have only run against stand-in services. The JavaScript and CSS in [`web/`](web) are tested in jsdom, and the C# plugin in [`plugin/`](plugin) has 166 unit tests. On 2026-11-21 it ran once in a throwaway Jellyfin 12.4.0 with File Transformation 3.0.3.0: both plugins loaded, the registration worked, `index.html` carried the settings and the versioned `loader.js` tag, the asset and settings routes answered as designed (anonymous 401, normal user 403, admin 200, bad input 400), and headless Chromium showed the dark theme, a "New this week" row and a collection row on desktop and phone widths. Everything else is untested, see [what is not verified](#what-is-not-verified). Installing from the plugin repository is described in [docs/design.md](docs/design.md); it has not been tried on a real server.
 
 ## Contents
 
@@ -56,7 +56,7 @@ add this to the page (for example with a custom-JavaScript plugin you already tr
 
 ## Install in a minute
 
-The plugin zip and its manifest entry exist (0.1.1), but nobody has installed it from the repository on a real server yet, so treat these steps as untested.
+The plugin zip and its manifest entry exist (0.2.0), but nobody has installed it from the repository on a real server yet, so treat these steps as untested.
 
 1. Install the **File Transformation** plugin.
 2. Dashboard, Plugins, Repositories, add the Lombo repository URL (`https://lombo-forge.github.io/lombo/manifest.json`), then install LomboShelf and restart Jellyfin.
