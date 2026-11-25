@@ -29,8 +29,8 @@
     var old = document.getElementById("lshelf-keep-box");
     if (old) old.remove();
     var u = ui();
-    var at = u && u.titleAnchor();
-    if ((!state.info && !state.msg) || !at || !at.parentNode) return;
+    var at = u && u.detailsSlot();
+    if ((!state.info && !state.msg) || !at) return;
     var box = document.createElement("div");
     box.id = "lshelf-keep-box";
     box.className = "lshelf-keep-box";
@@ -55,7 +55,7 @@
       m.textContent = state.msg;
       box.appendChild(m);
     }
-    at.parentNode.insertBefore(box, at.nextSibling);
+    at.insertBefore(box, at.firstChild);
   }
 
   async function check(id) {

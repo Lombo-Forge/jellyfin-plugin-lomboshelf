@@ -22,14 +22,15 @@
   function show(tier) {
     var old = document.getElementById("lshelf-storage-tag");
     if (old) old.remove();
-    var at = ui().titleAnchor();
-    if (!tier || !at || !at.parentNode) return;
+    var at = ui().detailsSlot();
+    if (!tier || !at) return;
     var b = document.createElement("span");
     b.id = "lshelf-storage-tag";
     b.className = "lshelf-storage-tag " + tier;
     b.textContent = LABELS[tier];
     b.title = TITLES[tier];
-    at.parentNode.insertBefore(b, at.nextSibling);
+    var note = at.querySelector("#lshelf-keep-box");   // the leaving note stays first, whichever answer arrives first
+    at.insertBefore(b, note ? note.nextSibling : at.firstChild);
   }
 
   async function mount() {
